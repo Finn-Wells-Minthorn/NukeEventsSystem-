@@ -55,6 +55,8 @@ public class EscalationEventConfig
 
     public byte StageFourMovementBoostIntensity { get; set; } = 100;
 
+    public float RespawnCatchUpDelaySeconds { get; set; } = 1f;
+
     public string StartAnnouncement { get; set; } =
         "<color=red><b>ESCALATION ACTIVATED!</b></color> SCPs begin empowered. Humans will grow stronger over time.";
 

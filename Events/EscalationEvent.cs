@@ -14,6 +14,7 @@ public sealed class EscalationEvent : EventBase
 {
     private readonly EscalationEventConfig _config;
     private readonly Dictionary<uint, PlayerLifeState> _playerLives = new();
+    private readonly Dictionary<uint, PendingCatchUp> _pendingCatchUps = new();
     private readonly List<Pickup> _overflowPickups = new();
     private CoroutineHandle _stageHandle;
     private int _currentStage;
@@ -55,6 +56,7 @@ public sealed class EscalationEvent : EventBase
             Timing.KillCoroutines(_stageHandle);
 
         _stageHandle = default;
+        CancelAllPendingCatchUps();
 
         foreach (Player player in Player.List)
         {
@@ -123,25 +125,26 @@ public sealed class EscalationEvent : EventBase
 
     private void OnPlayerJoined(PlayerJoinedEventArgs args)
     {
-        ApplyCurrentProgressionSafely(args.Player, false);
+        CancelPendingCatchUp(args.Player.NetworkId);
+        _playerLives.Remove(args.Player.NetworkId);
     }
 
     private void OnPlayerLeft(PlayerLeftEventArgs args)
     {
+        CancelPendingCatchUp(args.Player.NetworkId);
         _playerLives.Remove(args.Player.NetworkId);
     }
 
     private void OnPlayerSpawned(PlayerSpawnedEventArgs args)
     {
-        ApplyCurrentProgressionSafely(args.Player, true);
+        ScheduleDelayedCatchUp(args.Player);
     }
 
     private void OnPlayerChangedRole(PlayerChangedRoleEventArgs args)
     {
-        // ChangedRole makes the current-life stat/effect modifiers available as
-        // early as possible. Inventory rewards wait for Spawned so a role's
-        // normal loadout initialization cannot erase them.
-        ApplyCurrentProgressionSafely(args.Player, false);
+        // Any callback queued for the previous role/life must not touch the new
+        // role while its vanilla inventory and movement controller initialize.
+        CancelPendingCatchUp(args.Player.NetworkId);
     }
 
     private IEnumerator<float> RunStages()
@@ -175,7 +178,10 @@ public sealed class EscalationEvent : EventBase
         SendAnnouncement(announcement, _config.StageAnnouncementDurationSeconds);
 
         foreach (Player player in Player.List)
-            ApplyCurrentProgressionSafely(player, true);
+        {
+            if (!HasPendingCatchUp(player))
+                ApplyCurrentProgressionSafely(player, true);
+        }
 
         Console.WriteLine($"[SCPEventSystem] Escalation advanced to stage {stage}.");
     }
@@ -254,18 +260,127 @@ public sealed class EscalationEvent : EventBase
 
         if (_currentStage >= 1 && !state.StageOneGranted)
         {
-            state.StageOneGranted = true;
             GrantItems(player, _config.StageOneItems);
+            state.StageOneGranted = true;
         }
 
         if (_currentStage >= 3 && !state.StageThreeGranted)
         {
-            state.StageThreeGranted = true;
             GrantItems(player, _config.StageThreeItems);
 
             if (_config.StageThreeAmmoType != ItemType.None && _config.StageThreeAmmoAmount > 0)
-                player.AddAmmo(_config.StageThreeAmmoType, _config.StageThreeAmmoAmount);
+            {
+                try
+                {
+                    player.AddAmmo(_config.StageThreeAmmoType, _config.StageThreeAmmoAmount);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(
+                        $"[SCPEventSystem] Failed to grant Escalation ammunition to '{player.Nickname}': {ex.Message}"
+                    );
+                }
+            }
+
+            state.StageThreeGranted = true;
         }
+    }
+
+    private void ScheduleDelayedCatchUp(Player? player)
+    {
+        if (!IsRunning || player == null || player.IsDestroyed || !player.IsAlive)
+            return;
+
+        uint networkId = player.NetworkId;
+        int lifeId = player.LifeId;
+
+        if (_playerLives.TryGetValue(networkId, out PlayerLifeState? state) &&
+            state.LifeId == lifeId &&
+            state.CatchUpCompleted)
+        {
+            return;
+        }
+
+        if (_pendingCatchUps.TryGetValue(networkId, out PendingCatchUp pending))
+        {
+            if (pending.LifeId == lifeId)
+                return;
+
+            CancelPendingCatchUp(networkId);
+        }
+
+        float delaySeconds = Math.Max(0.1f, _config.RespawnCatchUpDelaySeconds);
+        CoroutineHandle handle = Timing.CallDelayed(
+            delaySeconds,
+            () => CompleteDelayedCatchUp(networkId, lifeId)
+        );
+
+        _pendingCatchUps[networkId] = new PendingCatchUp(lifeId, handle);
+    }
+
+    private void CompleteDelayedCatchUp(uint networkId, int lifeId)
+    {
+        if (!_pendingCatchUps.TryGetValue(networkId, out PendingCatchUp pending) ||
+            pending.LifeId != lifeId)
+        {
+            return;
+        }
+
+        _pendingCatchUps.Remove(networkId);
+
+        if (!IsRunning)
+            return;
+
+        Player? player = FindPlayer(networkId);
+        if (player == null || player.IsDestroyed || !player.IsAlive || player.LifeId != lifeId)
+            return;
+
+        PlayerLifeState state = GetCurrentLifeState(player);
+        if (state.CatchUpCompleted)
+            return;
+
+        ApplyCurrentProgressionSafely(player, true);
+        state.CatchUpCompleted = true;
+    }
+
+    private bool HasPendingCatchUp(Player? player)
+    {
+        return player != null &&
+            _pendingCatchUps.TryGetValue(player.NetworkId, out PendingCatchUp pending) &&
+            pending.LifeId == player.LifeId;
+    }
+
+    private void CancelPendingCatchUp(uint networkId)
+    {
+        if (!_pendingCatchUps.TryGetValue(networkId, out PendingCatchUp pending))
+            return;
+
+        _pendingCatchUps.Remove(networkId);
+
+        if (pending.Handle.IsValid)
+            Timing.KillCoroutines(pending.Handle);
+    }
+
+    private void CancelAllPendingCatchUps()
+    {
+        foreach (PendingCatchUp pending in _pendingCatchUps.Values)
+        {
+            if (pending.Handle.IsValid)
+                Timing.KillCoroutines(pending.Handle);
+        }
+
+        _pendingCatchUps.Clear();
+    }
+
+    private static Player? FindPlayer(uint networkId)
+    {
+        foreach (Player player in Player.List)
+        {
+            if (player != null && player.NetworkId == networkId)
+                return player;
+        }
+
+        return null;
     }
 
     private PlayerLifeState GetCurrentLifeState(Player player)
@@ -421,6 +536,21 @@ public sealed class EscalationEvent : EventBase
         public bool StageOneGranted { get; set; }
 
         public bool StageThreeGranted { get; set; }
+
+        public bool CatchUpCompleted { get; set; }
+    }
+
+    private readonly struct PendingCatchUp
+    {
+        public PendingCatchUp(int lifeId, CoroutineHandle handle)
+        {
+            LifeId = lifeId;
+            Handle = handle;
+        }
+
+        public int LifeId { get; }
+
+        public CoroutineHandle Handle { get; }
     }
 
     private readonly struct EffectState
