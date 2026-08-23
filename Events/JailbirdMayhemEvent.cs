@@ -127,6 +127,11 @@ public sealed class JailbirdMayhemEvent : EventBase
     {
         CancelPlayerProcessing(args.Player.NetworkId);
         _playerLives.Remove(args.Player.NetworkId);
+
+        // Depending on the role-transition path, LabAPI can raise Spawned
+        // before ChangedRole. Replace any callback for the previous ordering
+        // with one validated callback for the new playable-human life.
+        ScheduleProcessing(args.Player);
     }
 
     private void OnPlayerDeath(PlayerDeathEventArgs args)
