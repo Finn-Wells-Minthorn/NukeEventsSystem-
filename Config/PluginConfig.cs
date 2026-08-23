@@ -17,6 +17,26 @@ public class PluginConfig
     public SpeedDemonEventConfig SpeedDemon { get; set; } = new();
 
     public EscalationEventConfig Escalation { get; set; } = new();
+
+    public JailbirdMayhemEventConfig JailbirdMayhem { get; set; } = new();
+}
+
+public class JailbirdMayhemEventConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    public float SpawnProcessingDelaySeconds { get; set; } = 1f;
+
+    public bool RemoveFirearms { get; set; } = true;
+
+    public bool RemoveConventionalFirearmAmmunition { get; set; } = true;
+
+    public int JailbirdAmount { get; set; } = 1;
+
+    public string StartAnnouncement { get; set; } =
+        "<color=orange><b>JAILBIRD MAYHEM!</b></color> Human firearms have been replaced with Jailbirds.";
+
+    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
 }
 
 public class EscalationEventConfig
