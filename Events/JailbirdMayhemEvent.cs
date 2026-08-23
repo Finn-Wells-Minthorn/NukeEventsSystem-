@@ -25,6 +25,7 @@ public sealed class JailbirdMayhemEvent : EventBase
     private readonly Dictionary<uint, PlayerLifeState> _playerLives = new();
     private readonly Dictionary<uint, PendingProcessing> _pendingProcessing = new();
     private readonly List<Pickup> _overflowPickups = new();
+    private CoroutineHandle _initialPlayerSweepHandle;
     private bool _subscribed;
 
     public JailbirdMayhemEvent(JailbirdMayhemEventConfig? config = null)
@@ -43,10 +44,8 @@ public sealed class JailbirdMayhemEvent : EventBase
     protected override void OnStart()
     {
         Subscribe();
+        ScheduleInitialPlayerSweep();
         SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
-
-        foreach (Player player in Player.List)
-            ScheduleProcessing(player);
 
         Console.WriteLine(
             $"[SCPEventSystem] Jailbird Mayhem activated: delay='{_config.SpawnProcessingDelaySeconds}', " +
@@ -59,6 +58,7 @@ public sealed class JailbirdMayhemEvent : EventBase
     protected override void OnStop()
     {
         Unsubscribe();
+        CancelInitialPlayerSweep();
         CancelAllPendingProcessing();
 
         foreach (Pickup pickup in _overflowPickups)
@@ -167,6 +167,28 @@ public sealed class JailbirdMayhemEvent : EventBase
         _pendingProcessing[networkId] = new PendingProcessing(lifeId, handle);
     }
 
+    private void ScheduleInitialPlayerSweep()
+    {
+        CancelInitialPlayerSweep();
+
+        float delaySeconds = Math.Max(0.1f, _config.SpawnProcessingDelaySeconds);
+        _initialPlayerSweepHandle = Timing.CallDelayed(delaySeconds, RunInitialPlayerSweep);
+    }
+
+    private void RunInitialPlayerSweep()
+    {
+        _initialPlayerSweepHandle = default;
+
+        if (!IsRunning)
+            return;
+
+        foreach (Player player in Player.List)
+        {
+            if (IsPlayableHuman(player))
+                ProcessCurrentLife(player.NetworkId, player.LifeId);
+        }
+    }
+
     private void CompleteProcessing(uint networkId, int lifeId)
     {
         if (!_pendingProcessing.TryGetValue(networkId, out PendingProcessing pending) ||
@@ -177,6 +199,11 @@ public sealed class JailbirdMayhemEvent : EventBase
 
         _pendingProcessing.Remove(networkId);
 
+        ProcessCurrentLife(networkId, lifeId);
+    }
+
+    private void ProcessCurrentLife(uint networkId, int lifeId)
+    {
         if (!IsRunning)
             return;
 
@@ -325,6 +352,24 @@ public sealed class JailbirdMayhemEvent : EventBase
         {
             Console.WriteLine(
                 $"[SCPEventSystem] Failed to cancel Jailbird Mayhem processing for network ID '{networkId}': {ex.Message}"
+            );
+        }
+    }
+
+    private void CancelInitialPlayerSweep()
+    {
+        CoroutineHandle handle = _initialPlayerSweepHandle;
+        _initialPlayerSweepHandle = default;
+
+        try
+        {
+            if (handle.IsValid)
+                Timing.KillCoroutines(handle);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[SCPEventSystem] Failed to cancel the Jailbird Mayhem initial-player sweep: {ex.Message}"
             );
         }
     }
