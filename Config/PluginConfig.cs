@@ -15,6 +15,66 @@ public class PluginConfig
     public TimeToGambleEventConfig TimeToGamble { get; set; } = new();
 
     public SpeedDemonEventConfig SpeedDemon { get; set; } = new();
+
+    public EscalationEventConfig Escalation { get; set; } = new();
+}
+
+public class EscalationEventConfig
+{
+    public float ScpMaxHealthMultiplier { get; set; } = 1.35f;
+
+    public byte ScpDamageReductionIntensity { get; set; } = 30;
+
+    public float StageOneTimeSeconds { get; set; } = 300f;
+
+    public float StageTwoTimeSeconds { get; set; } = 600f;
+
+    public float StageThreeTimeSeconds { get; set; } = 900f;
+
+    public float StageFourTimeSeconds { get; set; } = 1200f;
+
+    public List<ItemType> StageOneItems { get; set; } = new()
+    {
+        ItemType.Medkit,
+        ItemType.Painkillers,
+        ItemType.Adrenaline
+    };
+
+    public float HumanStageTwoMaxHealthMultiplier { get; set; } = 1.25f;
+
+    public List<ItemType> StageThreeItems { get; set; } = new()
+    {
+        ItemType.GunE11SR,
+        ItemType.ArmorCombat,
+        ItemType.GrenadeHE
+    };
+
+    public ItemType StageThreeAmmoType { get; set; } = ItemType.Ammo556x45;
+
+    public ushort StageThreeAmmoAmount { get; set; } = 120;
+
+    public byte StageFourMovementBoostIntensity { get; set; } = 100;
+
+    public float RespawnCatchUpDelaySeconds { get; set; } = 1f;
+
+    public string StartAnnouncement { get; set; } =
+        "<color=red><b>ESCALATION ACTIVATED!</b></color> SCPs begin empowered. Humans will grow stronger over time.";
+
+    public string StageOneAnnouncement { get; set; } =
+        "<color=yellow><b>ESCALATION STAGE 1</b></color> Human medical supplies deployed.";
+
+    public string StageTwoAnnouncement { get; set; } =
+        "<color=yellow><b>ESCALATION STAGE 2</b></color> Surviving humans have increased maximum health.";
+
+    public string StageThreeAnnouncement { get; set; } =
+        "<color=orange><b>ESCALATION STAGE 3</b></color> Heavy human armaments deployed.";
+
+    public string StageFourAnnouncement { get; set; } =
+        "<color=red><b>ESCALATION STAGE 4</b></color> Human movement speed doubled.";
+
+    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
+
+    public ushort StageAnnouncementDurationSeconds { get; set; } = 8;
 }
 
 public class SpeedDemonEventConfig
