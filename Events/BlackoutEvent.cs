@@ -1,25 +1,48 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using LabApi.Events.Arguments.PlayerEvents;
+using LabApi.Events.Handlers;
+using LabApi.Features.Console;
 using LabApi.Features.Wrappers;
 using MEC;
 using MyFirstPlugin.Config;
+using PlayerRoles;
 
 namespace MyFirstPlugin.Events;
 
 public class BlackoutEvent : EventBase
 {
-    private const int SequenceTickSeconds = 1;
+    private const float CassieAnnouncementTimeSeconds = 1f;
+    private const float FirstIntroFlickerTimeSeconds = 2f;
+    private const float SecondIntroFlickerTimeSeconds = 5f;
+    private const float FinalIntroWarningTimeSeconds = 8f;
+    private const float NormalCycleStartTimeSeconds = 10f;
+    private const float MinimumSafeCallbackDelaySeconds = 0.1f;
+
+    private static readonly char[] CassieTokenSeparators = { ' ', '\t', '\r', '\n' };
+    private static readonly char[] CassieTokenPunctuation = { '.', ',', '!', '?', ';', ':' };
 
     private readonly BlackoutEventConfig _config;
-    private readonly List<CoroutineHandle> _scheduledActions = new();
     private readonly Random _random = new();
-    private CoroutineHandle _sequenceHandle;
+    private readonly List<CoroutineHandle> _cinematicActionHandles = new();
+    private readonly Dictionary<uint, PlayerLifeState> _playerLives = new();
+    private readonly Dictionary<uint, PendingLightProcessing> _pendingLightProcessing = new();
+    private readonly List<Pickup> _overflowPickups = new();
+
+    private CoroutineHandle _introDelayHandle;
     private CoroutineHandle _normalCycleHandle;
-    private CoroutineHandle _flickerHandle;
-    private int _elapsedSeconds;
+    private CoroutineHandle _darkSegmentFlickerHandle;
+    private CoroutineHandle _poweredFlickerHandle;
+    private CoroutineHandle _initialPlayerSweepHandle;
+    private int _introGeneration;
+    private int _lightingPhaseGeneration;
+    private LightingPhase _lightingPhase;
+    private bool _cinematicActive;
     private bool _lightsOn;
-    private bool _normalCycleRunning;
-    private bool _preBlackoutWarningShown;
+    private bool _grantLightSourcesThisRound;
+    private bool _subscribed;
+    private bool _cleanupCompleted = true;
 
     public BlackoutEvent(BlackoutEventConfig? config)
     {
@@ -29,120 +52,226 @@ public class BlackoutEvent : EventBase
     public override string Name => "Blackout Event";
 
     public override string Description =>
-        "A cinematic blackout sequence with staged flickers before the full outage, then a calmer looping flicker to keep players able to see.";
+        "A round-long facility blackout with a delayed cinematic intro and randomized dark and powered periods.";
 
     protected override void OnStart()
     {
-        _preBlackoutWarningShown = false;
-
-        Server.SendBroadcast(
-            _config.StartAnnouncement,
-            _config.StartAnnouncementDurationSeconds
-        );
-
-        _elapsedSeconds = 0;
+        _cleanupCompleted = false;
+        _cinematicActive = false;
+        _lightingPhase = LightingPhase.Intro;
+        _lightingPhaseGeneration++;
+        _introGeneration++;
         _lightsOn = true;
-        _normalCycleRunning = false;
         Map.TurnOnLights();
 
-        _sequenceHandle = Timing.CallContinuously(
-            SequenceTickSeconds,
-            OnSequenceTick,
-            () => { }
+        _grantLightSourcesThisRound = RollChance(_config.LightSourceChance);
+        Logger.Info(
+            $"[SCPEventSystem] Blackout light-source roll: " +
+            $"{(_grantLightSourcesThisRound ? "enabled" : "disabled")} " +
+            $"(configured chance '{_config.LightSourceChance}')."
         );
+
+        Subscribe();
+        ScheduleInitialPlayerSweep();
+        ScheduleIntro();
     }
 
     protected override void OnStop()
     {
-        CancelScheduledHandles();
+        if (_cleanupCompleted)
+        {
+            RestoreFacilityLighting();
+            return;
+        }
 
-        if (_sequenceHandle.IsValid)
-            Timing.KillCoroutines(_sequenceHandle);
+        _cleanupCompleted = true;
+        _introGeneration++;
+        _lightingPhaseGeneration++;
+        _cinematicActive = false;
+        _lightingPhase = LightingPhase.None;
+        _grantLightSourcesThisRound = false;
 
-        if (_normalCycleHandle.IsValid)
-            Timing.KillCoroutines(_normalCycleHandle);
+        Unsubscribe();
+        CancelIntroDelay();
+        CancelCinematicActions();
+        CancelInitialPlayerSweep();
+        CancelAllPendingLightProcessing();
+        CancelNormalCycle();
+        CancelDarkSegmentFlicker();
+        CancelPoweredFlicker();
+        CleanupOverflowPickups();
 
-        if (_flickerHandle.IsValid)
-            Timing.KillCoroutines(_flickerHandle);
+        _playerLives.Clear();
+        RestoreFacilityLighting();
+        SendBroadcast(_config.EndAnnouncement, _config.EndAnnouncementDurationSeconds);
+    }
 
-        _normalCycleRunning = false;
-        _lightsOn = true;
-        Map.TurnOnLights();
+    private void ScheduleIntro()
+    {
+        CancelIntroDelay();
 
-        Server.SendBroadcast(
-            _config.EndAnnouncement,
-            _config.EndAnnouncementDurationSeconds
+        int introGeneration = _introGeneration;
+        float delaySeconds = NormalizeNonnegative(_config.IntroStartDelaySeconds);
+        _introDelayHandle = Timing.CallDelayed(
+            delaySeconds,
+            () => BeginCinematic(introGeneration)
         );
     }
 
-    private void OnSequenceTick()
+    private void BeginCinematic(int introGeneration)
     {
-        int blackoutDurationSeconds = Math.Max(1, _config.BlackoutDurationSeconds);
-        _elapsedSeconds++;
+        _introDelayHandle = default;
 
-        if (_elapsedSeconds >= blackoutDurationSeconds)
-        {
-            EventManager.StopCurrentEvent();
-            return;
-        }
-
-        if (_normalCycleRunning)
+        if (!IsRunning || introGeneration != _introGeneration)
             return;
 
-        if (_config.EnableFlickering && _elapsedSeconds == 1)
-        {
-            DoFlickerBurst(1);
-            return;
-        }
+        _cinematicActive = true;
+        SendBroadcast(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
 
-        if (_config.EnableFlickering && _elapsedSeconds == 21)
-        {
-            DoFlickerBurst(2);
-            return;
-        }
-
-        if (_config.EnableFlickering && _elapsedSeconds == 31)
-        {
-            DoFlickerBurst(3);
-            return;
-        }
-
-        if (_config.EnableFlickering && _elapsedSeconds == 36)
-        {
-            ShowPreBlackoutWarning();
-            DoFlickerBurst(1);
-            return;
-        }
-
-        int transitionDelaySeconds = Math.Max(1, _config.FlickerTransitionDelaySeconds);
-        if (_elapsedSeconds == transitionDelaySeconds)
-        {
-            Map.TurnOffLights();
-            _lightsOn = false;
-            _normalCycleRunning = true;
-            StartNormalPostCinematicCycle();
-        }
-    }
-
-    private void ShowPreBlackoutWarning()
-    {
-        if (_preBlackoutWarningShown)
-            return;
-
-        _preBlackoutWarningShown = true;
-        Server.SendBroadcast(
-            _config.PreBlackoutWarning,
-            _config.PreBlackoutWarningDurationSeconds
+        ScheduleCinematicAction(CassieAnnouncementTimeSeconds, introGeneration, PlayCassieAnnouncement);
+        ScheduleCinematicAction(
+            FirstIntroFlickerTimeSeconds,
+            introGeneration,
+            () => DoIntroFlickerBurst(1, introGeneration)
+        );
+        ScheduleCinematicAction(
+            SecondIntroFlickerTimeSeconds,
+            introGeneration,
+            () => DoIntroFlickerBurst(2, introGeneration)
+        );
+        ScheduleCinematicAction(
+            FinalIntroWarningTimeSeconds,
+            introGeneration,
+            () =>
+            {
+                SendBroadcast(_config.PreBlackoutWarning, _config.PreBlackoutWarningDurationSeconds);
+                DoIntroFlickerBurst(3, introGeneration);
+            }
+        );
+        ScheduleCinematicAction(
+            NormalCycleStartTimeSeconds,
+            introGeneration,
+            () => StartNormalCycle(introGeneration)
         );
     }
 
-    private void StartNormalPostCinematicCycle()
+    private void ScheduleCinematicAction(float delaySeconds, int introGeneration, Action action)
     {
-        if (_normalCycleHandle.IsValid)
-            Timing.KillCoroutines(_normalCycleHandle);
+        CoroutineHandle handle = Timing.CallDelayed(
+            NormalizeNonnegative(delaySeconds),
+            () =>
+            {
+                if (!IsCinematicActive(introGeneration))
+                    return;
 
+                action();
+            }
+        );
+
+        _cinematicActionHandles.Add(handle);
+    }
+
+    private void DoIntroFlickerBurst(int burstCount, int introGeneration)
+    {
+        if (!_config.EnableFlickering || burstCount <= 0 || !IsCinematicActive(introGeneration))
+            return;
+
+        int stepDurationMilliseconds = Math.Max(0, _config.FlickerStepDurationMilliseconds);
+        float stepDurationSeconds = stepDurationMilliseconds / 1000f;
+
+        for (int index = 0; index < burstCount; index++)
+        {
+            float turnOffDelay = index * 2f * stepDurationSeconds;
+            float turnOnDelay = turnOffDelay + stepDurationSeconds;
+
+            ScheduleCinematicAction(
+                turnOffDelay,
+                introGeneration,
+                () => SetFacilityLighting(false)
+            );
+            ScheduleCinematicAction(
+                turnOnDelay,
+                introGeneration,
+                () => SetFacilityLighting(true)
+            );
+        }
+    }
+
+    private bool IsCinematicActive(int introGeneration)
+    {
+        return IsRunning &&
+            _cinematicActive &&
+            introGeneration == _introGeneration &&
+            _lightingPhase == LightingPhase.Intro;
+    }
+
+    private void PlayCassieAnnouncement()
+    {
+        if (!_config.CassieEnabled)
+            return;
+
+        string message = _config.CassieSpokenMessage ?? string.Empty;
+        if (!TryValidateCassieMessage(message, out string invalidToken))
+        {
+            Logger.Warn(
+                $"[SCPEventSystem] Invalid Blackout CASSIE message '{message}'. " +
+                $"Unrecognized spoken token: '{invalidToken}'. The announcement was skipped."
+            );
+            return;
+        }
+
+        try
+        {
+            Announcer.Message(
+                message,
+                _config.CassieCustomSubtitle ?? string.Empty,
+                _config.CassiePlayBackgroundAudio,
+                NormalizeFinite(_config.CassiePriority),
+                Clamp(NormalizeFinite(_config.CassieGlitchIntensity), 0f, 1f)
+            );
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn(
+                $"[SCPEventSystem] Failed to queue the Blackout CASSIE message '{message}': {ex.Message}"
+            );
+        }
+    }
+
+    private static bool TryValidateCassieMessage(string message, out string invalidToken)
+    {
+        invalidToken = string.Empty;
+        bool foundSpokenToken = false;
+
+        foreach (string rawToken in message.Split(CassieTokenSeparators, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string token = rawToken.Trim(CassieTokenPunctuation);
+            if (string.IsNullOrWhiteSpace(token))
+                continue;
+
+            foundSpokenToken = true;
+            if (Announcer.IsValid(token))
+                continue;
+
+            invalidToken = token;
+            return false;
+        }
+
+        if (foundSpokenToken)
+            return true;
+
+        invalidToken = "<empty>";
+        return false;
+    }
+
+    private void StartNormalCycle(int introGeneration)
+    {
+        if (!IsCinematicActive(introGeneration))
+            return;
+
+        _cinematicActive = false;
+        CancelNormalCycle();
         _normalCycleHandle = Timing.RunCoroutine(NormalCycleRoutine());
-        _scheduledActions.Add(_normalCycleHandle);
     }
 
     private IEnumerator<float> NormalCycleRoutine()
@@ -150,56 +279,51 @@ public class BlackoutEvent : EventBase
         while (IsRunning)
         {
             int blackoutSeconds = GetRandomBlackoutDurationSeconds();
-            int poweredSeconds = Math.Max(1, _config.NormalPoweredSeconds);
+            int darkGeneration = EnterLightingPhase(LightingPhase.Dark);
 
-            Map.TurnOffLights();
-            _lightsOn = false;
+            CancelPoweredFlicker();
+            SetFacilityLighting(false);
 
-            if (_config.EnableFlickering)
+            if (_config.EnableFlickering && RollChance(_config.BlackoutFlickerChance))
             {
-                if (_random.NextDouble() <= Clamp(_config.BlackoutFlickerChance, 0f, 1f))
-                {
-                    int flickerCount = GetRandomBlackoutFlickerCount();
-                    if (_flickerHandle.IsValid)
-                        Timing.KillCoroutines(_flickerHandle);
-
-                    _flickerHandle = Timing.RunCoroutine(BlackoutFlickerRoutine(blackoutSeconds, flickerCount));
-                    _scheduledActions.Add(_flickerHandle);
-                }
+                CancelDarkSegmentFlicker();
+                _darkSegmentFlickerHandle = Timing.RunCoroutine(
+                    FlickeringBlackoutRoutine(darkGeneration)
+                );
             }
 
             yield return Timing.WaitForSeconds(blackoutSeconds);
 
-            if (!IsRunning)
+            if (!IsDarkSegmentActive(darkGeneration))
                 yield break;
 
-            Map.TurnOnLights();
-            _lightsOn = true;
+            int poweredSeconds = Math.Max(1, _config.NormalPoweredSeconds);
+            int poweredGeneration = EnterLightingPhase(LightingPhase.Powered);
 
-            if (_config.EnableFlickering)
+            CancelDarkSegmentFlicker();
+            SetFacilityLighting(true);
+
+            if (_config.EnableFlickering && RollChance(_config.PoweredFlickerChance))
             {
-                if (_random.NextDouble() <= Clamp(_config.PoweredFlickerChance, 0f, 1f))
+                int flickerCount = GetRandomPoweredFlickerCount();
+                if (flickerCount > 0)
                 {
-                    int flickerCount = GetRandomPoweredFlickerCount();
-                    if (flickerCount > 0)
-                    {
-                        if (_flickerHandle.IsValid)
-                            Timing.KillCoroutines(_flickerHandle);
-
-                        _flickerHandle = Timing.RunCoroutine(PoweredFlickerRoutine(poweredSeconds, flickerCount));
-                        _scheduledActions.Add(_flickerHandle);
-                    }
+                    CancelPoweredFlicker();
+                    _poweredFlickerHandle = Timing.RunCoroutine(
+                        PoweredFlickerRoutine(poweredSeconds, flickerCount, poweredGeneration)
+                    );
                 }
             }
 
             yield return Timing.WaitForSeconds(poweredSeconds);
         }
+    }
 
-        if (IsRunning)
-        {
-            Map.TurnOnLights();
-            _lightsOn = true;
-        }
+    private int EnterLightingPhase(LightingPhase phase)
+    {
+        _lightingPhaseGeneration++;
+        _lightingPhase = phase;
+        return _lightingPhaseGeneration;
     }
 
     private int GetRandomBlackoutDurationSeconds()
@@ -209,113 +333,111 @@ public class BlackoutEvent : EventBase
         int longMin = Math.Max(1, _config.LongBlackoutMinSeconds);
         int longMax = Math.Max(longMin, _config.LongBlackoutMaxSeconds);
 
-        if (_random.NextDouble() <= Clamp(_config.ShortBlackoutChance, 0f, 1f))
-            return _random.Next(shortMin, shortMax + 1);
+        if (RollChance(_config.ShortBlackoutChance))
+            return GetRandomInclusive(shortMin, shortMax);
 
-        return _random.Next(longMin, longMax + 1);
+        return GetRandomInclusive(longMin, longMax);
     }
 
-    private int GetRandomBlackoutFlickerCount()
+    private int GetRandomInclusive(int min, int max)
     {
-        double roll = _random.NextDouble();
-        if (roll < 0.5)
-            return 0;
+        if (min >= max)
+            return min;
 
-        if (roll < 0.85)
-            return 1;
+        return max == int.MaxValue
+            ? _random.Next(min, max)
+            : _random.Next(min, max + 1);
+    }
 
-        if (roll < 0.98)
-            return 2;
+    private IEnumerator<float> FlickeringBlackoutRoutine(int darkGeneration)
+    {
+        while (IsDarkSegmentActive(darkGeneration))
+        {
+            float intervalSeconds = GetRandomBlackoutFlickerIntervalSeconds();
+            yield return Timing.WaitForSeconds(intervalSeconds);
 
-        return 3;
+            // Revalidate after the interval elapsed.
+            if (!IsDarkSegmentActive(darkGeneration))
+                yield break;
+
+            // Revalidate immediately before changing the lights.
+            if (!IsDarkSegmentActive(darkGeneration) || _lightsOn)
+                yield break;
+
+            SetFacilityLighting(true);
+
+            float pulseDurationSeconds = NormalizeNonnegative(_config.BlackoutFlickerDurationSeconds);
+            if (pulseDurationSeconds > 0f)
+                yield return Timing.WaitForSeconds(pulseDurationSeconds);
+
+            // Revalidate after the light-on pulse.
+            if (!IsDarkSegmentActive(darkGeneration))
+                yield break;
+
+            // Revalidate immediately before restoring darkness.
+            if (!IsDarkSegmentActive(darkGeneration) || !_lightsOn)
+                yield break;
+
+            SetFacilityLighting(false);
+        }
+    }
+
+    private bool IsDarkSegmentActive(int generation)
+    {
+        return IsRunning &&
+            _lightingPhase == LightingPhase.Dark &&
+            _lightingPhaseGeneration == generation;
+    }
+
+    private float GetRandomBlackoutFlickerIntervalSeconds()
+    {
+        float min = NormalizeNonnegative(_config.BlackoutFlickerMinIntervalSeconds);
+        float max = NormalizeNonnegative(_config.BlackoutFlickerMaxIntervalSeconds);
+
+        if (min > max)
+        {
+            float originalMin = min;
+            min = max;
+            max = originalMin;
+        }
+
+        min = Math.Max(MinimumSafeCallbackDelaySeconds, min);
+        max = Math.Max(min, max);
+
+        if (Math.Abs(max - min) < 0.0001f)
+            return min;
+
+        return (float)_random.NextDouble() * (max - min) + min;
     }
 
     private int GetRandomPoweredFlickerCount()
     {
         double roll = _random.NextDouble();
-        if (roll < 0.45)
+        if (roll < 0.45d)
             return 0;
 
-        if (roll < 0.8)
+        if (roll < 0.8d)
             return 1;
 
         return 2;
     }
 
-    private IEnumerator<float> BlackoutFlickerRoutine(float blackoutSeconds, int flickerCount)
-    {
-        if (flickerCount <= 0 || blackoutSeconds <= 0f)
-            yield break;
-
-        float flickerDuration = Math.Max(0.05f, _config.BlackoutFlickerDurationSeconds);
-        float minTime = Math.Max(1f, blackoutSeconds * 0.1f);
-        float maxTime = Math.Max(minTime + 0.5f, blackoutSeconds - minTime - flickerDuration);
-
-        List<float> times = new();
-        float minimumGap = Math.Max(2f, blackoutSeconds / 12f);
-
-        for (int i = 0; i < flickerCount && IsRunning; i++)
-        {
-            float candidate;
-            int attempts = 0;
-            do
-            {
-                candidate = (float)_random.NextDouble() * (maxTime - minTime) + minTime;
-                attempts++;
-            }
-            while (attempts < 20 && times.Exists(existing => Math.Abs(candidate - existing) < minimumGap));
-
-            if (candidate <= minTime || candidate >= blackoutSeconds - flickerDuration)
-                continue;
-
-            times.Add(candidate);
-        }
-
-        if (times.Count == 0)
-            yield break;
-
-        times.Sort();
-        float elapsed = 0f;
-
-        foreach (float when in times)
-        {
-            if (!IsRunning)
-                yield break;
-
-            float delay = when - elapsed;
-            if (delay > 0f)
-                yield return Timing.WaitForSeconds(delay);
-
-            elapsed = when;
-
-            if (!IsRunning || _lightsOn)
-                yield break;
-
-            Map.TurnOnLights();
-            _lightsOn = true;
-            yield return Timing.WaitForSeconds(flickerDuration);
-
-            if (!IsRunning)
-                yield break;
-
-            Map.TurnOffLights();
-            _lightsOn = false;
-        }
-    }
-
-    private IEnumerator<float> PoweredFlickerRoutine(float poweredSeconds, int flickerCount)
+    private IEnumerator<float> PoweredFlickerRoutine(
+        float poweredSeconds,
+        int flickerCount,
+        int poweredGeneration)
     {
         if (flickerCount <= 0 || poweredSeconds <= 0f)
             yield break;
 
-        float flickerDuration = Math.Max(0.05f, _config.SubtleFlickerDurationSeconds);
+        float flickerDuration = NormalizeNonnegative(_config.SubtleFlickerDurationSeconds);
         float minTime = Math.Max(1f, poweredSeconds * 0.12f);
         float maxTime = Math.Max(minTime + 0.5f, poweredSeconds - 1f - flickerDuration);
 
         List<float> times = new();
         float minimumGap = Math.Max(2f, poweredSeconds / 8f);
 
-        for (int i = 0; i < flickerCount && IsRunning; i++)
+        for (int index = 0; index < flickerCount && IsPoweredPhaseActive(poweredGeneration); index++)
         {
             float candidate;
             int attempts = 0;
@@ -340,7 +462,7 @@ public class BlackoutEvent : EventBase
 
         foreach (float when in times)
         {
-            if (!IsRunning || !_lightsOn)
+            if (!IsPoweredPhaseActive(poweredGeneration))
                 yield break;
 
             float delay = when - elapsed;
@@ -349,65 +471,424 @@ public class BlackoutEvent : EventBase
 
             elapsed = when;
 
-            if (!IsRunning || !_lightsOn)
+            if (!IsPoweredPhaseActive(poweredGeneration) || !_lightsOn)
                 yield break;
 
-            Map.TurnOffLights();
-            _lightsOn = false;
-            yield return Timing.WaitForSeconds(flickerDuration);
+            SetFacilityLighting(false);
+            if (flickerDuration > 0f)
+                yield return Timing.WaitForSeconds(flickerDuration);
 
-            if (!IsRunning)
+            if (!IsPoweredPhaseActive(poweredGeneration))
                 yield break;
 
-            Map.TurnOnLights();
-            _lightsOn = true;
+            if (!IsPoweredPhaseActive(poweredGeneration) || _lightsOn)
+                yield break;
+
+            SetFacilityLighting(true);
         }
     }
 
-    private float GetRandomSubtleInterval()
+    private bool IsPoweredPhaseActive(int generation)
     {
-        float min = Math.Max(1f, _config.SubtleFlickerMinIntervalSeconds);
-        float max = Math.Max(min, _config.SubtleFlickerMaxIntervalSeconds);
-        return (float)_random.NextDouble() * (max - min) + min;
+        return IsRunning &&
+            _lightingPhase == LightingPhase.Powered &&
+            _lightingPhaseGeneration == generation;
     }
 
-    private void DoFlickerBurst(int burstCount)
+    private void Subscribe()
     {
-        int stepDurationMilliseconds = Math.Max(50, _config.FlickerStepDurationMilliseconds);
-        float stepDurationSeconds = stepDurationMilliseconds / 1000f;
+        if (_subscribed)
+            return;
 
-        for (int i = 0; i < burstCount; i++)
+        PlayerEvents.Joined += OnPlayerJoined;
+        PlayerEvents.Left += OnPlayerLeft;
+        PlayerEvents.Spawned += OnPlayerSpawned;
+        PlayerEvents.ChangedRole += OnPlayerChangedRole;
+        PlayerEvents.Death += OnPlayerDeath;
+        _subscribed = true;
+    }
+
+    private void Unsubscribe()
+    {
+        if (!_subscribed)
+            return;
+
+        PlayerEvents.Joined -= OnPlayerJoined;
+        PlayerEvents.Left -= OnPlayerLeft;
+        PlayerEvents.Spawned -= OnPlayerSpawned;
+        PlayerEvents.ChangedRole -= OnPlayerChangedRole;
+        PlayerEvents.Death -= OnPlayerDeath;
+        _subscribed = false;
+    }
+
+    private void OnPlayerJoined(PlayerJoinedEventArgs args)
+    {
+        CancelPlayerLightProcessing(args.Player.NetworkId);
+        _playerLives.Remove(args.Player.NetworkId);
+    }
+
+    private void OnPlayerLeft(PlayerLeftEventArgs args)
+    {
+        CancelPlayerLightProcessing(args.Player.NetworkId);
+        _playerLives.Remove(args.Player.NetworkId);
+    }
+
+    private void OnPlayerSpawned(PlayerSpawnedEventArgs args)
+    {
+        ScheduleLightProcessing(args.Player);
+    }
+
+    private void OnPlayerChangedRole(PlayerChangedRoleEventArgs args)
+    {
+        uint networkId = args.Player.NetworkId;
+        int lifeId = args.Player.LifeId;
+
+        CancelPlayerLightProcessing(networkId);
+
+        if (_playerLives.TryGetValue(networkId, out PlayerLifeState? state) && state.LifeId != lifeId)
+            _playerLives.Remove(networkId);
+
+        // Spawned and ChangedRole can arrive in either order. Both paths converge
+        // on one delayed, NetworkId/LifeId-validated callback for the new life.
+        ScheduleLightProcessing(args.Player);
+    }
+
+    private void OnPlayerDeath(PlayerDeathEventArgs args)
+    {
+        CancelPlayerLightProcessing(args.Player.NetworkId);
+        _playerLives.Remove(args.Player.NetworkId);
+    }
+
+    private void ScheduleLightProcessing(Player? player)
+    {
+        if (!IsRunning || !_grantLightSourcesThisRound || !TryGetAssignedLightSource(player, out _))
+            return;
+
+        uint networkId = player!.NetworkId;
+        int lifeId = player.LifeId;
+
+        if (_playerLives.TryGetValue(networkId, out PlayerLifeState? state) &&
+            state.LifeId == lifeId &&
+            state.Processed)
         {
-            float delayA = i * 2f * stepDurationSeconds;
-            float delayB = delayA + stepDurationSeconds;
+            return;
+        }
 
-            _scheduledActions.Add(Timing.CallDelayed(delayA, ToggleLights));
-            _scheduledActions.Add(Timing.CallDelayed(delayB, ToggleLights));
+        if (_pendingLightProcessing.TryGetValue(networkId, out PendingLightProcessing pending))
+        {
+            if (pending.LifeId == lifeId)
+                return;
+
+            CancelPlayerLightProcessing(networkId);
+        }
+
+        float delaySeconds = Math.Max(
+            MinimumSafeCallbackDelaySeconds,
+            NormalizeNonnegative(_config.LightSourceGrantDelaySeconds)
+        );
+        CoroutineHandle handle = Timing.CallDelayed(
+            delaySeconds,
+            () => CompleteLightProcessing(networkId, lifeId)
+        );
+
+        _pendingLightProcessing[networkId] = new PendingLightProcessing(lifeId, handle);
+    }
+
+    private void ScheduleInitialPlayerSweep()
+    {
+        CancelInitialPlayerSweep();
+
+        float delaySeconds = Math.Max(
+            MinimumSafeCallbackDelaySeconds,
+            NormalizeNonnegative(_config.LightSourceGrantDelaySeconds)
+        );
+        _initialPlayerSweepHandle = Timing.CallDelayed(delaySeconds, RunInitialPlayerSweep);
+    }
+
+    private void RunInitialPlayerSweep()
+    {
+        _initialPlayerSweepHandle = default;
+
+        if (!IsRunning || !_grantLightSourcesThisRound)
+            return;
+
+        foreach (Player player in Player.List)
+        {
+            if (TryGetAssignedLightSource(player, out _))
+                ProcessCurrentLife(player.NetworkId, player.LifeId);
         }
     }
 
-    private void CancelScheduledHandles()
+    private void CompleteLightProcessing(uint networkId, int lifeId)
     {
-        if (_flickerHandle.IsValid)
-            Timing.KillCoroutines(_flickerHandle);
-
-        _flickerHandle = default;
-
-        for (int i = _scheduledActions.Count - 1; i >= 0; i--)
+        if (!_pendingLightProcessing.TryGetValue(networkId, out PendingLightProcessing pending) ||
+            pending.LifeId != lifeId)
         {
-            CoroutineHandle handle = _scheduledActions[i];
+            return;
+        }
+
+        _pendingLightProcessing.Remove(networkId);
+        ProcessCurrentLife(networkId, lifeId);
+    }
+
+    private void ProcessCurrentLife(uint networkId, int lifeId)
+    {
+        if (!IsRunning || !_grantLightSourcesThisRound)
+            return;
+
+        Player? player = FindPlayer(networkId);
+        if (player == null ||
+            player.NetworkId != networkId ||
+            player.LifeId != lifeId ||
+            !TryGetAssignedLightSource(player, out ItemType assignedItem))
+        {
+            return;
+        }
+
+        PlayerLifeState state = GetCurrentLifeState(player);
+        if (state.Processed)
+            return;
+
+        if (player.Items.Any(item => item.Type == assignedItem) || TryGrantLightSource(player, assignedItem))
+        {
+            state.Processed = true;
+            CancelPlayerLightProcessing(networkId);
+        }
+    }
+
+    private bool TryGrantLightSource(Player player, ItemType itemType)
+    {
+        try
+        {
+            if (!player.IsInventoryFull && player.AddItem(itemType) != null)
+                return true;
+
+            Pickup? pickup = Pickup.Create(itemType, player.Position);
+            if (pickup == null || !pickup.IsSpawned)
+            {
+                if (pickup != null && !pickup.IsDestroyed)
+                    pickup.Destroy();
+
+                Logger.Warn(
+                    $"[SCPEventSystem] Failed to grant Blackout light source '{itemType}' " +
+                    $"to '{player.Nickname}'."
+                );
+                return false;
+            }
+
+            _overflowPickups.Add(pickup);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn(
+                $"[SCPEventSystem] Failed to grant Blackout light source '{itemType}' " +
+                $"to '{player.Nickname}': {ex.Message}"
+            );
+            return false;
+        }
+    }
+
+    private static bool TryGetAssignedLightSource(Player? player, out ItemType itemType)
+    {
+        itemType = ItemType.None;
+        if (!IsPlayableHuman(player))
+            return false;
+
+        if (player!.Team == Team.ClassD)
+        {
+            itemType = ItemType.Lantern;
+            return true;
+        }
+
+        itemType = ItemType.Flashlight;
+        return true;
+    }
+
+    private static bool IsPlayableHuman(Player? player)
+    {
+        if (player == null || player.IsDestroyed || !player.IsAlive)
+            return false;
+
+        return player.Team == Team.FoundationForces ||
+            player.Team == Team.ChaosInsurgency ||
+            player.Team == Team.Scientists ||
+            player.Team == Team.ClassD;
+    }
+
+    private static Player? FindPlayer(uint networkId)
+    {
+        foreach (Player player in Player.List)
+        {
+            if (player != null && player.NetworkId == networkId)
+                return player;
+        }
+
+        return null;
+    }
+
+    private PlayerLifeState GetCurrentLifeState(Player player)
+    {
+        if (_playerLives.TryGetValue(player.NetworkId, out PlayerLifeState? state) &&
+            state.LifeId == player.LifeId)
+        {
+            return state;
+        }
+
+        state = new PlayerLifeState(player.LifeId);
+        _playerLives[player.NetworkId] = state;
+        return state;
+    }
+
+    private void CancelIntroDelay()
+    {
+        CancelHandle(ref _introDelayHandle, "Blackout intro delay");
+    }
+
+    private void CancelCinematicActions()
+    {
+        for (int index = _cinematicActionHandles.Count - 1; index >= 0; index--)
+        {
+            CoroutineHandle handle = _cinematicActionHandles[index];
+            CancelHandle(handle, "Blackout cinematic action");
+        }
+
+        _cinematicActionHandles.Clear();
+    }
+
+    private void CancelInitialPlayerSweep()
+    {
+        CancelHandle(ref _initialPlayerSweepHandle, "Blackout initial-player light sweep");
+    }
+
+    private void CancelPlayerLightProcessing(uint networkId)
+    {
+        if (!_pendingLightProcessing.TryGetValue(networkId, out PendingLightProcessing pending))
+            return;
+
+        _pendingLightProcessing.Remove(networkId);
+        CancelHandle(pending.Handle, $"Blackout light processing for network ID '{networkId}'");
+    }
+
+    private void CancelAllPendingLightProcessing()
+    {
+        foreach (PendingLightProcessing pending in _pendingLightProcessing.Values)
+            CancelHandle(pending.Handle, "Blackout pending light processing");
+
+        _pendingLightProcessing.Clear();
+    }
+
+    private void CancelNormalCycle()
+    {
+        CancelHandle(ref _normalCycleHandle, "Blackout normal cycle");
+    }
+
+    private void CancelDarkSegmentFlicker()
+    {
+        CancelHandle(ref _darkSegmentFlickerHandle, "Blackout dark-segment flicker");
+    }
+
+    private void CancelPoweredFlicker()
+    {
+        CancelHandle(ref _poweredFlickerHandle, "Blackout powered-period flicker");
+    }
+
+    private void CleanupOverflowPickups()
+    {
+        foreach (Pickup pickup in _overflowPickups)
+        {
+            try
+            {
+                if (pickup != null && !pickup.IsDestroyed)
+                    pickup.Destroy();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(
+                    $"[SCPEventSystem] Failed to clean up a Blackout overflow pickup: {ex.Message}"
+                );
+            }
+        }
+
+        _overflowPickups.Clear();
+    }
+
+    private static void CancelHandle(ref CoroutineHandle handle, string operation)
+    {
+        CoroutineHandle capturedHandle = handle;
+        handle = default;
+        CancelHandle(capturedHandle, operation);
+    }
+
+    private static void CancelHandle(CoroutineHandle handle, string operation)
+    {
+        try
+        {
             if (handle.IsValid)
                 Timing.KillCoroutines(handle);
         }
-
-        _scheduledActions.Clear();
+        catch (Exception ex)
+        {
+            Logger.Warn($"[SCPEventSystem] Failed to cancel {operation}: {ex.Message}");
+        }
     }
 
-    private static float GetSafeLoopIntervalSeconds(BlackoutEventConfig config)
+    private static void SendBroadcast(string announcement, ushort durationSeconds)
     {
-        int requestedMilliseconds = config.FlickerStepDurationMilliseconds * 8;
-        int safeMilliseconds = Math.Max(1000, requestedMilliseconds);
-        return safeMilliseconds / 1000f;
+        if (string.IsNullOrWhiteSpace(announcement) || durationSeconds == 0)
+            return;
+
+        Server.SendBroadcast(announcement, durationSeconds);
+    }
+
+    private void SetFacilityLighting(bool lightsOn)
+    {
+        _lightsOn = lightsOn;
+
+        if (lightsOn)
+            Map.TurnOnLights();
+        else
+            Map.TurnOffLights();
+    }
+
+    private void RestoreFacilityLighting()
+    {
+        _lightsOn = true;
+
+        try
+        {
+            Map.TurnOnLights();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[SCPEventSystem] Failed to restore facility lighting after Blackout: {ex.Message}");
+        }
+    }
+
+    private bool RollChance(float configuredChance)
+    {
+        float normalizedChance = NormalizeChance(configuredChance);
+        return _random.NextDouble() < normalizedChance;
+    }
+
+    private static float NormalizeChance(float configuredChance)
+    {
+        float finiteChance = NormalizeFinite(configuredChance);
+        float clampedChance = Clamp(finiteChance, 0f, 100f);
+
+        // Preserve compatibility with the existing 0..1 Blackout chance values
+        // while allowing the new settings to use direct percentages such as 35 or 50.
+        return clampedChance <= 1f ? clampedChance : clampedChance / 100f;
+    }
+
+    private static float NormalizeNonnegative(float value)
+    {
+        return Math.Max(0f, NormalizeFinite(value));
+    }
+
+    private static float NormalizeFinite(float value)
+    {
+        return float.IsNaN(value) || float.IsInfinity(value) ? 0f : value;
     }
 
     private static float Clamp(float value, float min, float max)
@@ -415,23 +896,39 @@ public class BlackoutEvent : EventBase
         if (value < min)
             return min;
 
-        if (value > max)
-            return max;
-
-        return value;
+        return value > max ? max : value;
     }
 
-    private void ToggleLights()
+    private sealed class PlayerLifeState
     {
-        _lightsOn = !_lightsOn;
+        public PlayerLifeState(int lifeId)
+        {
+            LifeId = lifeId;
+        }
 
-        if (_lightsOn)
+        public int LifeId { get; }
+
+        public bool Processed { get; set; }
+    }
+
+    private readonly struct PendingLightProcessing
+    {
+        public PendingLightProcessing(int lifeId, CoroutineHandle handle)
         {
-            Map.TurnOnLights();
+            LifeId = lifeId;
+            Handle = handle;
         }
-        else
-        {
-            Map.TurnOffLights();
-        }
+
+        public int LifeId { get; }
+
+        public CoroutineHandle Handle { get; }
+    }
+
+    private enum LightingPhase
+    {
+        None,
+        Intro,
+        Dark,
+        Powered
     }
 }
