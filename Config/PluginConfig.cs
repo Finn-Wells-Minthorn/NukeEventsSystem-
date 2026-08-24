@@ -129,9 +129,7 @@ public class TimeToGambleEventConfig
 
 public class BlackoutEventConfig
 {
-    public int BlackoutDurationSeconds { get; set; } = 90;
-
-    public int FlickerTransitionDelaySeconds { get; set; } = 41;
+    public float IntroStartDelaySeconds { get; set; } = 10f;
 
     public bool EnableFlickering { get; set; } = true;
 
@@ -145,19 +143,19 @@ public class BlackoutEventConfig
 
     public int ShortBlackoutMaxSeconds { get; set; } = 45;
 
-    public float ShortBlackoutChance { get; set; } = 0.15f;
+    public float ShortBlackoutChance { get; set; } = 15f;
 
     public int LongBlackoutMinSeconds { get; set; } = 150;
 
     public int LongBlackoutMaxSeconds { get; set; } = 210;
 
-    public float BlackoutFlickerChance { get; set; } = 0.65f;
+    public float BlackoutFlickerChance { get; set; } = 35f;
 
-    public float PoweredFlickerChance { get; set; } = 0.55f;
+    public float PoweredFlickerChance { get; set; } = 55f;
 
-    public float BlackoutFlickerMinIntervalSeconds { get; set; } = 4f;
+    public float BlackoutFlickerMinIntervalSeconds { get; set; } = 5f;
 
-    public float BlackoutFlickerMaxIntervalSeconds { get; set; } = 15f;
+    public float BlackoutFlickerMaxIntervalSeconds { get; set; } = 10f;
 
     public float BlackoutFlickerDurationSeconds { get; set; } = 0.12f;
 
@@ -170,6 +168,24 @@ public class BlackoutEventConfig
     public float SubtleFlickerMaxIntervalSeconds { get; set; } = 5.5f;
 
     public float SubtleFlickerDurationSeconds { get; set; } = 0.15f;
+
+    public float LightSourceChance { get; set; } = 50f;
+
+    public float LightSourceGrantDelaySeconds { get; set; } = 1f;
+
+    public bool CassieEnabled { get; set; } = true;
+
+    public string CassieSpokenMessage { get; set; } =
+        "ATTENTIONALLPERSONNEL . POWER FAILURE DETECTED";
+
+    public string CassieCustomSubtitle { get; set; } =
+        "Facility power failure detected.";
+
+    public float CassiePriority { get; set; } = 0f;
+
+    public bool CassiePlayBackgroundAudio { get; set; } = true;
+
+    public float CassieGlitchIntensity { get; set; } = 1f;
 
     public string StartAnnouncement { get; set; } = "<color=red><b>BLACKOUT EVENT ACTIVATED!</b></color>";
 
