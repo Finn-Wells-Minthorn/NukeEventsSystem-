@@ -35,6 +35,14 @@ public class InfectionEventConfig
 
     public float ConversionDelaySeconds { get; set; } = 1f;
 
+    public float PlagueDoctorHealthMultiplier { get; set; } = 1f;
+
+    public float PlagueDoctorHumeShieldMultiplier { get; set; } = 1f;
+
+    public float ZombieHealthMultiplier { get; set; } = 1f;
+
+    public float ZombieHumeShieldMultiplier { get; set; } = 1f;
+
     public string StartAnnouncement { get; set; } =
         "<color=#66ff66><b>INFECTION!</b></color> Plague Doctors lead the infected. Zombies spread the infection through their kills.";
 

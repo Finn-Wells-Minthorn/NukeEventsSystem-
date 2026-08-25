@@ -17,11 +17,14 @@ public sealed class InfectionEvent : EventBase
 {
     private const float InitialNormalizationFallbackDelaySeconds = 0.1f;
     private const float MinimumSafeConversionDelaySeconds = 0.1f;
+    private const float RoleStatApplicationDelaySeconds = 0.1f;
     private const int HardMaximumStartingDoctors = 3;
 
     private readonly InfectionEventConfig _config;
     private readonly Dictionary<uint, PendingConversion> _pendingConversions = new();
     private readonly Dictionary<uint, HashSet<int>> _handledDeathLives = new();
+    private readonly Dictionary<uint, PendingRoleStatApplication> _pendingRoleStatApplications = new();
+    private readonly Dictionary<uint, ModifiedRoleStats> _modifiedRoleStats = new();
     private CoroutineHandle _initialNormalizationHandle;
     private int _initialNormalizationGeneration;
     private int _nextConversionId;
@@ -54,6 +57,8 @@ public sealed class InfectionEvent : EventBase
         CancelInitialRoleNormalization();
         Unsubscribe();
         CancelAllPendingConversions();
+        CancelAllPendingRoleStatApplications();
+        RestoreAllModifiedRoleStats();
         _handledDeathLives.Clear();
     }
 
@@ -260,6 +265,9 @@ public sealed class InfectionEvent : EventBase
             $"non049Scps='{DescribePlayers(nonDoctorScps)}', " +
             $"rolesAfter='{DescribePlayers(finalParticipants)}'."
         );
+
+        foreach (Player player in finalParticipants)
+            ScheduleRoleStatApplication(player);
     }
 
     private void SetStartingRole(Player player, RoleTypeId role, ICollection<string> assignments)
@@ -305,6 +313,283 @@ public sealed class InfectionEvent : EventBase
         return descriptions.Length == 0 ? "(none)" : string.Join(", ", descriptions);
     }
 
+    private void ScheduleRoleStatApplication(Player? player)
+    {
+        if (!IsRunning ||
+            player == null ||
+            player.IsDestroyed ||
+            !player.IsAlive ||
+            !TryGetRoleStatMultipliers(player.Role, out float healthMultiplier, out float shieldMultiplier) ||
+            (IsDefaultMultiplier(healthMultiplier) && IsDefaultMultiplier(shieldMultiplier)))
+        {
+            return;
+        }
+
+        uint networkId = player.NetworkId;
+        int lifeId = player.LifeId;
+        RoleTypeId role = player.Role;
+
+        if (_modifiedRoleStats.TryGetValue(networkId, out ModifiedRoleStats? state) &&
+            state.LifeId == lifeId &&
+            state.Role == role)
+        {
+            return;
+        }
+
+        if (_pendingRoleStatApplications.TryGetValue(
+                networkId,
+                out PendingRoleStatApplication pending))
+        {
+            if (pending.LifeId == lifeId && pending.Role == role)
+                return;
+
+            CancelPendingRoleStatApplication(networkId);
+        }
+
+        CoroutineHandle handle = Timing.CallDelayed(
+            RoleStatApplicationDelaySeconds,
+            () => CompleteRoleStatApplication(networkId, lifeId, role)
+        );
+
+        _pendingRoleStatApplications[networkId] = new PendingRoleStatApplication(
+            lifeId,
+            role,
+            handle
+        );
+    }
+
+    private void CompleteRoleStatApplication(uint networkId, int lifeId, RoleTypeId role)
+    {
+        if (!_pendingRoleStatApplications.TryGetValue(
+                networkId,
+                out PendingRoleStatApplication pending) ||
+            pending.LifeId != lifeId ||
+            pending.Role != role)
+        {
+            return;
+        }
+
+        _pendingRoleStatApplications.Remove(networkId);
+
+        if (!IsRunning)
+            return;
+
+        Player? player = FindPlayer(networkId);
+        if (player == null ||
+            player.IsDestroyed ||
+            !player.IsAlive ||
+            player.NetworkId != networkId ||
+            player.LifeId != lifeId ||
+            player.Role != role)
+        {
+            return;
+        }
+
+        try
+        {
+            ApplyRoleStats(player);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[SCPEventSystem] Infection failed to apply role stats to " +
+                $"'{player.Nickname}' ({player.Role}): {ex.Message}"
+            );
+        }
+    }
+
+    private void ApplyRoleStats(Player player)
+    {
+        if (!TryGetRoleStatMultipliers(
+                player.Role,
+                out float healthMultiplier,
+                out float shieldMultiplier))
+        {
+            return;
+        }
+
+        healthMultiplier = NormalizeMultiplier(healthMultiplier);
+        shieldMultiplier = NormalizeMultiplier(shieldMultiplier);
+
+        if (IsDefaultMultiplier(healthMultiplier) && IsDefaultMultiplier(shieldMultiplier))
+            return;
+
+        ModifiedRoleStats state = new(player.LifeId, player.Role);
+        _modifiedRoleStats[player.NetworkId] = state;
+
+        if (!IsDefaultMultiplier(healthMultiplier) && player.MaxHealth > 0f)
+        {
+            float originalMaximumHealth = player.MaxHealth;
+            float newMaximumHealth = originalMaximumHealth * healthMultiplier;
+
+            if (IsValidMaximum(newMaximumHealth))
+            {
+                state.MaximumHealthApplied = true;
+                state.OriginalMaximumHealth = originalMaximumHealth;
+                float newHealth = ScaleCurrentPool(
+                    player.Health,
+                    originalMaximumHealth,
+                    newMaximumHealth
+                );
+                player.MaxHealth = newMaximumHealth;
+                player.Health = newHealth;
+            }
+        }
+
+        if (!IsDefaultMultiplier(shieldMultiplier) && player.MaxHumeShield > 0f)
+        {
+            float originalMaximumShield = player.MaxHumeShield;
+            float newMaximumShield = originalMaximumShield * shieldMultiplier;
+
+            if (IsValidMaximum(newMaximumShield))
+            {
+                state.MaximumHumeShieldApplied = true;
+                state.OriginalMaximumHumeShield = originalMaximumShield;
+                float newShield = ScaleCurrentPool(
+                    player.HumeShield,
+                    originalMaximumShield,
+                    newMaximumShield
+                );
+                player.MaxHumeShield = newMaximumShield;
+                player.HumeShield = newShield;
+            }
+        }
+
+        if (!state.MaximumHealthApplied && !state.MaximumHumeShieldApplied)
+        {
+            _modifiedRoleStats.Remove(player.NetworkId);
+            return;
+        }
+
+        Console.WriteLine(
+            $"[SCPEventSystem] Infection applied role stats to '{player.Nickname}' " +
+            $"({player.Role}): healthMultiplier='{healthMultiplier}', " +
+            $"humeShieldMultiplier='{shieldMultiplier}'."
+        );
+    }
+
+    private bool TryGetRoleStatMultipliers(
+        RoleTypeId role,
+        out float healthMultiplier,
+        out float shieldMultiplier)
+    {
+        switch (role)
+        {
+            case RoleTypeId.Scp049:
+                healthMultiplier = NormalizeMultiplier(_config.PlagueDoctorHealthMultiplier);
+                shieldMultiplier = NormalizeMultiplier(_config.PlagueDoctorHumeShieldMultiplier);
+                return true;
+            case RoleTypeId.Scp0492:
+                healthMultiplier = NormalizeMultiplier(_config.ZombieHealthMultiplier);
+                shieldMultiplier = NormalizeMultiplier(_config.ZombieHumeShieldMultiplier);
+                return true;
+            default:
+                healthMultiplier = 1f;
+                shieldMultiplier = 1f;
+                return false;
+        }
+    }
+
+    private void RestoreAllModifiedRoleStats()
+    {
+        foreach (Player player in Player.List)
+        {
+            if (player == null ||
+                player.IsDestroyed ||
+                !_modifiedRoleStats.TryGetValue(player.NetworkId, out ModifiedRoleStats? state) ||
+                state.LifeId != player.LifeId ||
+                state.Role != player.Role)
+            {
+                continue;
+            }
+
+            try
+            {
+                RestoreRoleStats(player, state);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[SCPEventSystem] Infection failed to restore role stats for " +
+                    $"'{player.Nickname}' ({player.Role}): {ex.Message}"
+                );
+            }
+        }
+
+        _modifiedRoleStats.Clear();
+    }
+
+    private static void RestoreRoleStats(Player player, ModifiedRoleStats state)
+    {
+        if (state.MaximumHealthApplied)
+        {
+            float restoredHealth = ScaleCurrentPool(
+                player.Health,
+                player.MaxHealth,
+                state.OriginalMaximumHealth
+            );
+            player.MaxHealth = state.OriginalMaximumHealth;
+            player.Health = restoredHealth;
+        }
+
+        if (state.MaximumHumeShieldApplied)
+        {
+            float restoredShield = ScaleCurrentPool(
+                player.HumeShield,
+                player.MaxHumeShield,
+                state.OriginalMaximumHumeShield
+            );
+            player.MaxHumeShield = state.OriginalMaximumHumeShield;
+            player.HumeShield = restoredShield;
+        }
+    }
+
+    private static float ScaleCurrentPool(float current, float currentMaximum, float newMaximum)
+    {
+        if (currentMaximum <= 0f || newMaximum <= 0f)
+            return 0f;
+
+        float scaled = current * (newMaximum / currentMaximum);
+        return Math.Min(newMaximum, Math.Max(0f, scaled));
+    }
+
+    private static bool IsValidMaximum(float value) =>
+        !float.IsNaN(value) && !float.IsInfinity(value) && value > 0f;
+
+    private static bool IsDefaultMultiplier(float multiplier) =>
+        Math.Abs(multiplier - 1f) < 0.0001f;
+
+    private static float NormalizeMultiplier(float multiplier)
+    {
+        return float.IsNaN(multiplier) || float.IsInfinity(multiplier) || multiplier <= 0f
+            ? 1f
+            : multiplier;
+    }
+
+    private void CancelPendingRoleStatApplication(uint networkId)
+    {
+        if (!_pendingRoleStatApplications.TryGetValue(
+                networkId,
+                out PendingRoleStatApplication pending))
+        {
+            return;
+        }
+
+        _pendingRoleStatApplications.Remove(networkId);
+        CancelHandle(
+            pending.Handle,
+            $"Infection role-stat application for network ID '{networkId}'"
+        );
+    }
+
+    private void CancelAllPendingRoleStatApplications()
+    {
+        foreach (PendingRoleStatApplication pending in _pendingRoleStatApplications.Values)
+            CancelHandle(pending.Handle, "pending Infection role-stat application");
+
+        _pendingRoleStatApplications.Clear();
+    }
+
     private void Subscribe()
     {
         if (_subscribed)
@@ -343,16 +628,15 @@ public sealed class InfectionEvent : EventBase
 
     private void OnPlayerSpawned(PlayerSpawnedEventArgs args)
     {
-        if (!_pendingConversions.TryGetValue(args.Player.NetworkId, out PendingConversion? pending))
-            return;
-
-        if (IsDeadSpectator(args.Player))
+        if (_pendingConversions.TryGetValue(args.Player.NetworkId, out PendingConversion? pending))
         {
-            UpdateExpectedDeadLife(pending, args.Player.LifeId);
-            return;
+            if (IsDeadSpectator(args.Player))
+                UpdateExpectedDeadLife(pending, args.Player.LifeId);
+            else
+                CancelPendingConversion(args.Player.NetworkId);
         }
 
-        CancelPendingConversion(args.Player.NetworkId);
+        ScheduleRoleStatApplication(args.Player);
     }
 
     private void OnPlayerChangedRole(PlayerChangedRoleEventArgs args)
@@ -370,6 +654,10 @@ public sealed class InfectionEvent : EventBase
                 CancelPendingConversion(args.Player.NetworkId);
             }
         }
+
+        CancelPendingRoleStatApplication(args.Player.NetworkId);
+        _modifiedRoleStats.Remove(args.Player.NetworkId);
+        ScheduleRoleStatApplication(args.Player);
     }
 
     private void OnPlayerDeath(PlayerDeathEventArgs args)
@@ -502,7 +790,9 @@ public sealed class InfectionEvent : EventBase
     private void ClearPlayerTracking(uint networkId)
     {
         CancelPendingConversion(networkId);
+        CancelPendingRoleStatApplication(networkId);
         _handledDeathLives.Remove(networkId);
+        _modifiedRoleStats.Remove(networkId);
     }
 
     private void CancelPendingConversion(uint networkId)
@@ -607,6 +897,46 @@ public sealed class InfectionEvent : EventBase
             return;
 
         Server.SendBroadcast(announcement, durationSeconds);
+    }
+
+    private sealed class ModifiedRoleStats
+    {
+        public ModifiedRoleStats(int lifeId, RoleTypeId role)
+        {
+            LifeId = lifeId;
+            Role = role;
+        }
+
+        public int LifeId { get; }
+
+        public RoleTypeId Role { get; }
+
+        public bool MaximumHealthApplied { get; set; }
+
+        public float OriginalMaximumHealth { get; set; }
+
+        public bool MaximumHumeShieldApplied { get; set; }
+
+        public float OriginalMaximumHumeShield { get; set; }
+    }
+
+    private readonly struct PendingRoleStatApplication
+    {
+        public PendingRoleStatApplication(
+            int lifeId,
+            RoleTypeId role,
+            CoroutineHandle handle)
+        {
+            LifeId = lifeId;
+            Role = role;
+            Handle = handle;
+        }
+
+        public int LifeId { get; }
+
+        public RoleTypeId Role { get; }
+
+        public CoroutineHandle Handle { get; }
     }
 
     private sealed class PendingConversion
