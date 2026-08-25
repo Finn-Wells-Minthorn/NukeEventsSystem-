@@ -19,6 +19,34 @@ public class PluginConfig
     public EscalationEventConfig Escalation { get; set; } = new();
 
     public JailbirdMayhemEventConfig JailbirdMayhem { get; set; } = new();
+
+    public InfectionEventConfig Infection { get; set; } = new();
+}
+
+public class InfectionEventConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    public int TwoDoctorMinimumPlayers { get; set; } = 15;
+
+    public int ThreeDoctorMinimumPlayers { get; set; } = 30;
+
+    public int MaximumStartingDoctors { get; set; } = 3;
+
+    public float ConversionDelaySeconds { get; set; } = 1f;
+
+    public float PlagueDoctorHealthMultiplier { get; set; } = 1f;
+
+    public float PlagueDoctorHumeShieldMultiplier { get; set; } = 1f;
+
+    public float ZombieHealthMultiplier { get; set; } = 1f;
+
+    public float ZombieHumeShieldMultiplier { get; set; } = 1f;
+
+    public string StartAnnouncement { get; set; } =
+        "<color=#66ff66><b>INFECTION!</b></color> Plague Doctors lead the infected. Zombies spread the infection through their kills.";
+
+    public ushort StartAnnouncementDurationSeconds { get; set; } = 12;
 }
 
 public class JailbirdMayhemEventConfig

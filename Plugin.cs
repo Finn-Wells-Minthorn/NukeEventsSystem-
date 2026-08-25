@@ -37,6 +37,7 @@ public class MyFirstPlugin : Plugin<PluginConfig>
         EventManager.Register(new SpeedDemonEvent(Config.SpeedDemon));
         EventManager.Register(new EscalationEvent(Config.Escalation));
         EventManager.Register(new JailbirdMayhemEvent(Config.JailbirdMayhem));
+        EventManager.Register(new InfectionEvent(Config.Infection));
     }
 
     public override void Enable()
