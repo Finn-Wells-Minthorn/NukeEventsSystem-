@@ -9,40 +9,30 @@
 
   <ItemGroup>
     <Reference Include="LabApi">
-      <HintPath>E:\SteamLibrary\steamapps\common\SCP Secret Laboratory Dedicated Server\SCPSL_Data\Managed\LabApi.dll</HintPath>
+      <HintPath>Libs\LabApi.dll</HintPath>
       <Private>false</Private>
     </Reference>
-  </ItemGroup>
 
-  <ItemGroup>
     <Reference Include="CommandSystem.Core">
-      <HintPath>E:\SteamLibrary\steamapps\common\SCP Secret Laboratory Dedicated Server\SCPSL_Data\Managed\CommandSystem.Core.dll</HintPath>
+      <HintPath>Libs\CommandSystem.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
-  </ItemGroup>
 
-  <ItemGroup>
     <Reference Include="Mirror">
-      <HintPath>E:\SteamLibrary\steamapps\common\SCP Secret Laboratory Dedicated Server\SCPSL_Data\Managed\Mirror.dll</HintPath>
+      <HintPath>Libs\Mirror.dll</HintPath>
       <Private>false</Private>
     </Reference>
-  </ItemGroup>
 
-  <ItemGroup>
     <Reference Include="Assembly-CSharp">
-      <HintPath>E:\SteamLibrary\steamapps\common\SCP Secret Laboratory Dedicated Server\SCPSL_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>Libs\Assembly-CSharp.dll</HintPath>
     </Reference>
-  </ItemGroup>
 
-  <ItemGroup>
     <Reference Include="Assembly-CSharp-firstpass">
-      <HintPath>E:\SteamLibrary\steamapps\common\SCP Secret Laboratory Dedicated Server\SCPSL_Data\Managed\Assembly-CSharp-firstpass.dll</HintPath>
+      <HintPath>Libs\Assembly-CSharp-firstpass.dll</HintPath>
     </Reference>
-  </ItemGroup>
 
-  <ItemGroup>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>E:\SteamLibrary\steamapps\common\SCP Secret Laboratory Dedicated Server\SCPSL_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>Libs\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
   </ItemGroup>
 
