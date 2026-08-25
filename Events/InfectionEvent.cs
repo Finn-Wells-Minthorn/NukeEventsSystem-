@@ -7,6 +7,7 @@ using LabApi.Features.Wrappers;
 using MEC;
 using MyFirstPlugin.Config;
 using PlayerRoles;
+using PlayerRoles.RoleAssign;
 using PlayerStatsSystem;
 using UnityEngine;
 
@@ -14,13 +15,18 @@ namespace MyFirstPlugin.Events;
 
 public sealed class InfectionEvent : EventBase
 {
+    private const float InitialNormalizationFallbackDelaySeconds = 0.1f;
     private const float MinimumSafeConversionDelaySeconds = 0.1f;
     private const int HardMaximumStartingDoctors = 3;
 
     private readonly InfectionEventConfig _config;
     private readonly Dictionary<uint, PendingConversion> _pendingConversions = new();
     private readonly Dictionary<uint, HashSet<int>> _handledDeathLives = new();
+    private CoroutineHandle _initialNormalizationHandle;
+    private int _initialNormalizationGeneration;
     private int _nextConversionId;
+    private bool _initialNormalizationCompleted;
+    private bool _roleAssignmentSubscribed;
     private bool _subscribed;
 
     public InfectionEvent(InfectionEventConfig? config = null)
@@ -39,12 +45,13 @@ public sealed class InfectionEvent : EventBase
     protected override void OnStart()
     {
         Subscribe();
-        ConfigureStartingRoles();
+        BeginInitialRoleNormalization();
         SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
     }
 
     protected override void OnStop()
     {
+        CancelInitialRoleNormalization();
         Unsubscribe();
         CancelAllPendingConversions();
         _handledDeathLives.Clear();
@@ -72,12 +79,108 @@ public sealed class InfectionEvent : EventBase
         return Math.Min(playerCount, Math.Min(configuredMaximum, desiredDoctors));
     }
 
-    private void ConfigureStartingRoles()
+    private void BeginInitialRoleNormalization()
     {
+        CancelInitialRoleNormalization();
+        _initialNormalizationCompleted = false;
+        int generation = _initialNormalizationGeneration;
+
+        RoleAssigner.OnPlayersSpawned += OnStartingPlayersSpawned;
+        _roleAssignmentSubscribed = true;
+
+        // RoleAssigner.OnPlayersSpawned is the authoritative automatic-round hook.
+        // The short next-frame fallback handles a manual start after that one-time
+        // hook has already fired, without delaying normal automatic startup.
+        _initialNormalizationHandle = Timing.CallDelayed(
+            InitialNormalizationFallbackDelaySeconds,
+            () => OnInitialNormalizationFallback(generation)
+        );
+
+        Console.WriteLine(
+            "[SCPEventSystem] Infection is waiting for vanilla starting role assignment to complete."
+        );
+    }
+
+    private void OnStartingPlayersSpawned()
+    {
+        TryConfigureStartingRoles(
+            _initialNormalizationGeneration,
+            "RoleAssigner.OnPlayersSpawned"
+        );
+    }
+
+    private void OnInitialNormalizationFallback(int generation)
+    {
+        if (generation == _initialNormalizationGeneration)
+            _initialNormalizationHandle = default;
+
+        TryConfigureStartingRoles(generation, "post-start fallback");
+    }
+
+    private void TryConfigureStartingRoles(int generation, string trigger)
+    {
+        if (generation != _initialNormalizationGeneration ||
+            _initialNormalizationCompleted ||
+            !IsRunning ||
+            !Round.IsRoundInProgress)
+        {
+            return;
+        }
+
         List<Player> participants = Player.List
             .Where(IsRoundParticipant)
             .ToList();
 
+        if (participants.Count == 0)
+        {
+            Console.WriteLine(
+                $"[SCPEventSystem] Infection initial normalization trigger '{trigger}' " +
+                "found no assigned round participants; continuing to wait for role assignment."
+            );
+            return;
+        }
+
+        StopWaitingForInitialRoles();
+
+        try
+        {
+            ConfigureStartingRoles(participants, trigger);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[SCPEventSystem] Infection initial role normalization failed: {ex.Message}"
+            );
+        }
+        finally
+        {
+            _initialNormalizationCompleted = true;
+        }
+    }
+
+    private void CancelInitialRoleNormalization()
+    {
+        _initialNormalizationGeneration++;
+        _initialNormalizationCompleted = false;
+        StopWaitingForInitialRoles();
+    }
+
+    private void StopWaitingForInitialRoles()
+    {
+        if (_roleAssignmentSubscribed)
+        {
+            RoleAssigner.OnPlayersSpawned -= OnStartingPlayersSpawned;
+            _roleAssignmentSubscribed = false;
+        }
+
+        if (_initialNormalizationHandle.IsValid)
+            CancelHandle(_initialNormalizationHandle, "Infection initial-role fallback");
+
+        _initialNormalizationHandle = default;
+    }
+
+    private void ConfigureStartingRoles(IReadOnlyList<Player> participants, string trigger)
+    {
         int targetDoctorCount = CalculateStartingDoctorCount(
             participants.Count,
             _config.TwoDoctorMinimumPlayers,
@@ -85,21 +188,24 @@ public sealed class InfectionEvent : EventBase
             _config.MaximumStartingDoctors
         );
 
-        if (targetDoctorCount == 0)
-        {
-            Console.WriteLine("[SCPEventSystem] Infection started without any eligible round participants.");
-            return;
-        }
-
-        List<Player> existingDoctors = participants
+        List<Player> startingScpSlots = participants
+            .Where(player => player.Team == Team.SCPs)
+            .ToList();
+        List<Player> existingDoctors = startingScpSlots
             .Where(player => player.Role == RoleTypeId.Scp049)
             .ToList();
-        List<Player> otherScps = participants
-            .Where(player => player.Team == Team.SCPs && player.Role != RoleTypeId.Scp049)
+        List<Player> otherScps = startingScpSlots
+            .Where(player => player.Role != RoleTypeId.Scp049)
             .ToList();
         List<Player> humans = participants
             .Where(IsPlayableHuman)
             .ToList();
+
+        Console.WriteLine(
+            $"[SCPEventSystem] Infection initial normalization triggered by '{trigger}': " +
+            $"participants='{participants.Count}', targetDoctors='{targetDoctorCount}', " +
+            $"rolesBefore='{DescribePlayers(participants)}'."
+        );
 
         List<Player> selectedDoctors = existingDoctors
             .Take(targetDoctorCount)
@@ -112,35 +218,62 @@ public sealed class InfectionEvent : EventBase
         selectedDoctors.AddRange(humans.Take(Math.Max(0, additionalDoctorsNeeded)));
 
         HashSet<uint> selectedDoctorIds = new(selectedDoctors.Select(player => player.NetworkId));
-
-        foreach (Player doctor in selectedDoctors)
-            SetStartingRole(doctor, RoleTypeId.Scp049);
-
-        // Infection has no other starting SCP types. Existing human roles stay
-        // untouched; only surplus vanilla SCP assignments need a human fallback.
-        foreach (Player surplusScp in participants.Where(player =>
-                     player.Team == Team.SCPs && !selectedDoctorIds.Contains(player.NetworkId)))
-            SetStartingRole(surplusScp, RoleTypeId.ClassD);
-
-        int actualDoctorCount = Player.List.Count(
-            player => IsRoundParticipant(player) && player.Role == RoleTypeId.Scp049
-        );
+        List<Player> surplusScps = startingScpSlots
+            .Where(player => !selectedDoctorIds.Contains(player.NetworkId))
+            .ToList();
 
         Console.WriteLine(
-            $"[SCPEventSystem] Infection activated for '{participants.Count}' participants: " +
+            $"[SCPEventSystem] Infection starting SCP slots='{DescribePlayers(startingScpSlots)}'; " +
+            $"selectedDoctors='{DescribePlayers(selectedDoctors)}'; " +
+            $"surplusScps='{DescribePlayers(surplusScps)}'."
+        );
+
+        List<string> assignments = new();
+
+        foreach (Player doctor in selectedDoctors)
+            SetStartingRole(doctor, RoleTypeId.Scp049, assignments);
+
+        // Existing valid human roles remain untouched. Only surplus vanilla SCP
+        // assignments receive the simple human fallback required by Infection.
+        foreach (Player surplusScp in surplusScps)
+            SetStartingRole(surplusScp, RoleTypeId.ClassD, assignments);
+
+        List<Player> finalParticipants = Player.List
+            .Where(IsRoundParticipant)
+            .ToList();
+        List<Player> nonDoctorScps = finalParticipants
+            .Where(player => player.Team == Team.SCPs && player.Role != RoleTypeId.Scp049)
+            .ToList();
+        int actualDoctorCount = finalParticipants.Count(player => player.Role == RoleTypeId.Scp049);
+        string result = actualDoctorCount == targetDoctorCount && nonDoctorScps.Count == 0
+            ? "SUCCESS"
+            : "FAILED";
+
+        Console.WriteLine(
+            $"[SCPEventSystem] Infection starting assignments='" +
+            $"{(assignments.Count == 0 ? "(none)" : string.Join(", ", assignments))}'."
+        );
+        Console.WriteLine(
+            $"[SCPEventSystem] Infection initial normalization {result}: " +
             $"targetDoctors='{targetDoctorCount}', actualDoctors='{actualDoctorCount}', " +
-            $"conversionDelay='{GetConversionDelaySeconds()}'."
+            $"non049ScpCount='{nonDoctorScps.Count}', " +
+            $"non049Scps='{DescribePlayers(nonDoctorScps)}', " +
+            $"rolesAfter='{DescribePlayers(finalParticipants)}'."
         );
     }
 
-    private void SetStartingRole(Player player, RoleTypeId role)
+    private void SetStartingRole(Player player, RoleTypeId role, ICollection<string> assignments)
     {
-        if (player.Role == role)
+        RoleTypeId previousRole = player.Role;
+        if (previousRole == role)
             return;
 
         try
         {
             player.SetRole(role, RoleChangeReason.RoundStart, RoleSpawnFlags.All);
+            assignments.Add(
+                $"{player.Nickname}[net={player.NetworkId}] {previousRole}->{player.Role}"
+            );
 
             if (player.Role != role)
             {
@@ -152,11 +285,24 @@ public sealed class InfectionEvent : EventBase
         }
         catch (Exception ex)
         {
+            assignments.Add(
+                $"{player.Nickname}[net={player.NetworkId}] {previousRole}->FAILED({role})"
+            );
             Console.WriteLine(
                 $"[SCPEventSystem] Infection failed to assign starting role '{role}' " +
                 $"to '{player.Nickname}': {ex.Message}"
             );
         }
+    }
+
+    private static string DescribePlayers(IEnumerable<Player> players)
+    {
+        string[] descriptions = players
+            .Select(player =>
+                $"{player.Nickname}[net={player.NetworkId},life={player.LifeId},role={player.Role}]")
+            .ToArray();
+
+        return descriptions.Length == 0 ? "(none)" : string.Join(", ", descriptions);
     }
 
     private void Subscribe()
