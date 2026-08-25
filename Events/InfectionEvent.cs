@@ -18,11 +18,9 @@ public sealed class InfectionEvent : EventBase
     private const int HardMaximumStartingDoctors = 3;
 
     private readonly InfectionEventConfig _config;
-    private readonly System.Random _random = new();
     private readonly Dictionary<uint, PendingConversion> _pendingConversions = new();
     private readonly Dictionary<uint, HashSet<int>> _handledDeathLives = new();
     private int _nextConversionId;
-    private int _startingDoctorTarget;
     private bool _subscribed;
 
     public InfectionEvent(InfectionEventConfig? config = null)
@@ -50,7 +48,6 @@ public sealed class InfectionEvent : EventBase
         Unsubscribe();
         CancelAllPendingConversions();
         _handledDeathLives.Clear();
-        _startingDoctorTarget = 0;
     }
 
     internal static int CalculateStartingDoctorCount(
@@ -87,7 +84,6 @@ public sealed class InfectionEvent : EventBase
             _config.ThreeDoctorMinimumPlayers,
             _config.MaximumStartingDoctors
         );
-        _startingDoctorTarget = targetDoctorCount;
 
         if (targetDoctorCount == 0)
         {
@@ -105,45 +101,26 @@ public sealed class InfectionEvent : EventBase
             .Where(IsPlayableHuman)
             .ToList();
 
-        Shuffle(existingDoctors);
-        Shuffle(otherScps);
-        Shuffle(humans);
-
-        List<Player> orderedScps = existingDoctors
-            .Concat(otherScps)
-            .ToList();
-        List<Player> selectedDoctors = orderedScps
+        List<Player> selectedDoctors = existingDoctors
             .Take(targetDoctorCount)
             .ToList();
 
         int additionalDoctorsNeeded = targetDoctorCount - selectedDoctors.Count;
-        List<Player> promotedHumans = humans
-            .Take(Math.Max(0, additionalDoctorsNeeded))
-            .ToList();
-        selectedDoctors.AddRange(promotedHumans);
+        selectedDoctors.AddRange(otherScps.Take(Math.Max(0, additionalDoctorsNeeded)));
 
-        HashSet<uint> promotedNetworkIds = new(promotedHumans.Select(player => player.NetworkId));
-        List<RoleTypeId> survivorRoleTemplates = humans
-            .Where(player => !promotedNetworkIds.Contains(player.NetworkId))
-            .Select(player => player.Role)
-            .Where(IsPlayableHumanRole)
-            .ToList();
+        additionalDoctorsNeeded = targetDoctorCount - selectedDoctors.Count;
+        selectedDoctors.AddRange(humans.Take(Math.Max(0, additionalDoctorsNeeded)));
 
-        if (survivorRoleTemplates.Count == 0)
-            survivorRoleTemplates.Add(RoleTypeId.ClassD);
+        HashSet<uint> selectedDoctorIds = new(selectedDoctors.Select(player => player.NetworkId));
 
         foreach (Player doctor in selectedDoctors)
             SetStartingRole(doctor, RoleTypeId.Scp049);
 
-        List<Player> surplusScps = orderedScps
-            .Skip(targetDoctorCount)
-            .ToList();
-
-        for (int index = 0; index < surplusScps.Count; index++)
-        {
-            RoleTypeId replacementRole = survivorRoleTemplates[index % survivorRoleTemplates.Count];
-            SetStartingRole(surplusScps[index], replacementRole);
-        }
+        // Infection has no other starting SCP types. Existing human roles stay
+        // untouched; only surplus vanilla SCP assignments need a human fallback.
+        foreach (Player surplusScp in participants.Where(player =>
+                     player.Team == Team.SCPs && !selectedDoctorIds.Contains(player.NetworkId)))
+            SetStartingRole(surplusScp, RoleTypeId.ClassD);
 
         int actualDoctorCount = Player.List.Count(
             player => IsRoundParticipant(player) && player.Role == RoleTypeId.Scp049
@@ -247,41 +224,6 @@ public sealed class InfectionEvent : EventBase
                 CancelPendingConversion(args.Player.NetworkId);
             }
         }
-
-        if (IsRunning &&
-            args.ChangeReason == RoleChangeReason.LateJoin &&
-            args.Player.Team == Team.SCPs)
-        {
-            NormalizeLateJoinScp(args.Player);
-        }
-    }
-
-    private void NormalizeLateJoinScp(Player player)
-    {
-        int currentDoctorCount = Player.List.Count(
-            candidate => IsRoundParticipant(candidate) &&
-                candidate.NetworkId != player.NetworkId &&
-                candidate.Role == RoleTypeId.Scp049
-        );
-
-        RoleTypeId replacementRole = currentDoctorCount < _startingDoctorTarget
-            ? RoleTypeId.Scp049
-            : GetReplacementHumanRole(player.NetworkId);
-
-        SetStartingRole(player, replacementRole);
-    }
-
-    private RoleTypeId GetReplacementHumanRole(uint excludedNetworkId)
-    {
-        List<RoleTypeId> roles = Player.List
-            .Where(player => player.NetworkId != excludedNetworkId && IsPlayableHuman(player))
-            .Select(player => player.Role)
-            .Where(IsPlayableHumanRole)
-            .ToList();
-
-        return roles.Count == 0
-            ? RoleTypeId.ClassD
-            : roles[_random.Next(roles.Count)];
     }
 
     private void OnPlayerDeath(PlayerDeathEventArgs args)
@@ -325,18 +267,17 @@ public sealed class InfectionEvent : EventBase
         if (!IsPlayableHumanRole(args.OldRole))
             return false;
 
-        Player? attacker = args.Attacker;
-        if (attacker == null ||
-            attacker.IsDestroyed ||
-            !attacker.IsAlive ||
-            attacker.NetworkId == args.Player.NetworkId ||
-            attacker.Role != RoleTypeId.Scp0492)
-        {
+        if (args.DamageHandler is not Scp049DamageHandler damageHandler ||
+            damageHandler.DamageSubType != Scp049DamageHandler.AttackType.Scp0492)
             return false;
-        }
 
-        return args.DamageHandler is Scp049DamageHandler damageHandler &&
-            damageHandler.DamageSubType == Scp049DamageHandler.AttackType.Scp0492;
+        // The damage handler's Footprint captures the attacker's role and identity
+        // when the hit is created. It remains authoritative even if the zombie dies,
+        // changes role, or disconnects before the victim's Death event is dispatched.
+        return damageHandler.Attacker.IsSet &&
+            damageHandler.Attacker.NetId != 0 &&
+            damageHandler.Attacker.NetId != args.Player.NetworkId &&
+            damageHandler.Attacker.Role == RoleTypeId.Scp0492;
     }
 
     private void CompleteConversion(uint networkId, int conversionId)
@@ -512,17 +453,6 @@ public sealed class InfectionEvent : EventBase
             !player.IsAlive &&
             player.Team == Team.Dead &&
             player.Role == RoleTypeId.Spectator;
-    }
-
-    private void Shuffle<T>(IList<T> items)
-    {
-        for (int index = items.Count - 1; index > 0; index--)
-        {
-            int swapIndex = _random.Next(index + 1);
-            T item = items[index];
-            items[index] = items[swapIndex];
-            items[swapIndex] = item;
-        }
     }
 
     private static void SendAnnouncement(string announcement, ushort durationSeconds)
