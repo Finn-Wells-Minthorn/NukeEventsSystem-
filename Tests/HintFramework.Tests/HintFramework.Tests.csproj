@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Hints\HintElement.cs" Link="Hints\HintElement.cs" />
+    <Compile Include="..\..\Hints\HintPlayerState.cs" Link="Hints\HintPlayerState.cs" />
+    <Compile Include="..\..\Hints\HintComposer.cs" Link="Hints\HintComposer.cs" />
+  </ItemGroup>
+</Project>
