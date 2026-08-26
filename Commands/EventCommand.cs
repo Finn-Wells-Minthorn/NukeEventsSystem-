@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using CommandSystem;
 using MyFirstPlugin.Events;
-using MyFirstPlugin.Config;
 
 namespace MyFirstPlugin.Commands;
 
