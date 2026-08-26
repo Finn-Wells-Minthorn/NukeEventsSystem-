@@ -19,6 +19,7 @@ internal sealed class HintManager : CustomEventsHandler
     private const float PersistentHintDurationSeconds = 999999f;
     private const float EmptyHintDurationSeconds = 0.1f;
     private const float MinimumExternalHintDurationSeconds = 0.05f;
+    private const float ExternalHintRestorePaddingSeconds = 0.15f;
 
     private readonly Harmony _harmony = new(HarmonyId);
     private readonly HintStateRegistry _states = new();
@@ -164,8 +165,10 @@ internal sealed class HintManager : CustomEventsHandler
             ? MinimumExternalHintDurationSeconds
             : durationSeconds;
 
+        // Restoring at the exact advertised duration can race the client's
+        // final expiry/clear frame and erase the replacement hint immediately.
         CoroutineHandle handle = Timing.CallDelayed(
-            safeDuration,
+            safeDuration + ExternalHintRestorePaddingSeconds,
             () => RestoreAfterExternalHint(networkId, state, generation));
 
         _pendingRestores[networkId] = new PendingRestore(state, generation, handle);
