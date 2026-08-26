@@ -22,9 +22,10 @@ internal static class HintDisplayPatch
             if (connection == null || HintDisplay.SuppressedReceivers.Contains(connection))
                 return;
 
-            Player? player = Player.Get(__instance.gameObject);
-            if (player != null)
-                HintPatchBridge.NotifyExternalHint(player, hint.DurationScalar);
+            if (!ReferenceHub.TryGetHub(connection, out ReferenceHub hub))
+                return;
+
+            HintPatchBridge.NotifyExternalHint(Player.Get(hub), hint.DurationScalar);
         }
         catch (Exception exception)
         {
