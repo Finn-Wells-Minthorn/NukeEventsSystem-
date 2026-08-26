@@ -25,7 +25,6 @@ public sealed class TimeToGambleMachineManager
 
         machine.BindWorkstation(workstation);
         _machines.Add(machine);
-        Console.WriteLine($"[SCPEventSystem] Registered existing workstation for '{machine.Id}' at position '{workstation.Position}', room='{workstation.Room?.Name}'.");
     }
 
     public void Clear()
@@ -40,7 +39,6 @@ public sealed class TimeToGambleMachineManager
             return;
 
         _monitorHandle = Timing.CallContinuously(0.1f, CheckWorkstations, () => { });
-        Console.WriteLine("[SCPEventSystem] Gamble workstation interaction monitor started.");
     }
 
     public void Unsubscribe()
@@ -49,7 +47,6 @@ public sealed class TimeToGambleMachineManager
             Timing.KillCoroutines(_monitorHandle);
 
         _monitorHandle = default;
-        Console.WriteLine("[SCPEventSystem] Gamble workstation interaction monitor stopped.");
     }
 
     private void CheckWorkstations()
@@ -58,10 +55,7 @@ public sealed class TimeToGambleMachineManager
         {
             Workstation? workstation = machine.BoundWorkstation;
             if (workstation == null || workstation.IsDestroyed)
-            {
-                Console.WriteLine($"[SCPEventSystem] Gamble workstation check skipped: machine='{machine.Id}', workstationMissingOrDestroyed={workstation == null || workstation.IsDestroyed}.");
                 continue;
-            }
 
             Player? user = workstation.KnownUser;
             uint userId = user?.NetworkId ?? 0;
@@ -69,7 +63,6 @@ public sealed class TimeToGambleMachineManager
             if (!_lastKnownUsers.TryGetValue(machine.Id, out uint previousUserId))
             {
                 _lastKnownUsers[machine.Id] = userId;
-                Console.WriteLine($"[SCPEventSystem] Gamble workstation monitor initialized: machine='{machine.Id}', status='{workstation.Status}', knownUser='{user?.Nickname ?? "<none>"}'.");
                 continue;
             }
 
@@ -80,7 +73,6 @@ public sealed class TimeToGambleMachineManager
 
             if (user != null)
             {
-                Console.WriteLine($"[SCPEventSystem] Gamble workstation user changed: machine='{machine.Id}', status='{workstation.Status}', player='{user.Nickname}', role='{user.Role}', team='{user.Team}'.");
                 if (!machine.TryUse(user, out string reason))
                 {
                     Console.WriteLine($"[SCPEventSystem] Gamble terminal denied for '{user.Nickname}': {reason}");

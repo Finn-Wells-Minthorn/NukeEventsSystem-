@@ -12,7 +12,6 @@ public class TimeToGambleEvent : EventBase
     private readonly TimeToGambleMachineManager _machineManager = new();
     private readonly GambleRewardSpawner _rewardSpawner = new();
     private readonly TimeToGambleEventConfig _config;
-    private int _affectedPlayerCount;
 
     public TimeToGambleEvent(TimeToGambleEventConfig? config = null)
     {
@@ -45,22 +44,15 @@ public class TimeToGambleEvent : EventBase
             return;
         }
 
-        Console.WriteLine($"[SCPEventSystem] Gamble target room found: name='{targetRoom.Name}', position='{targetRoom.Position}', zone='{targetRoom.Zone}'.");
-
         Workstation? targetWorkstation = Workstation.List
             .Where(workstation => workstation.Room != null && workstation.Room.Name == _config.TargetRoomName)
             .ElementAtOrDefault(_config.TargetWorkstationIndex);
-
-        Console.WriteLine($"[SCPEventSystem] Workstation diagnostics: total={Workstation.List.Count}, matchingRoom={Workstation.List.Count(workstation => workstation.Room != null && workstation.Room.Name == _config.TargetRoomName)}, targetIndex={_config.TargetWorkstationIndex}.");
 
         if (targetWorkstation == null)
         {
             Console.WriteLine($"[SCPEventSystem] No existing workstation found in room '{targetRoom.Name}' at configured index {_config.TargetWorkstationIndex}.");
             return;
         }
-
-        Console.WriteLine($"[SCPEventSystem] Existing gamble terminal found: type='{targetWorkstation.GetType().FullName}', room='{targetWorkstation.Room?.Name}', position='{targetWorkstation.Position}'.");
-        Console.WriteLine($"[SCPEventSystem] Target workstation state: status='{targetWorkstation.Status}', knownUser='{targetWorkstation.KnownUser?.Nickname ?? "<none>"}', isDestroyed='{targetWorkstation.IsDestroyed}'.");
 
         GamblingMachine gambleMachine = new GamblingMachine(
             "gamble-terminal",
@@ -71,22 +63,13 @@ public class TimeToGambleEvent : EventBase
         _machineManager.RegisterMachine(gambleMachine, targetWorkstation);
         _machineManager.Subscribe();
 
-        int affected = 0;
-
         foreach (Player player in Player.List)
         {
             if (player == null || !player.IsHuman || !player.IsAlive)
                 continue;
 
             player.ClearInventory(true, true);
-            affected++;
         }
-
-        _affectedPlayerCount = affected;
-
-        Console.WriteLine(
-            $"[TimeToGambleEvent] Removed starting inventory for {affected} human players and started existing-terminal interaction detection."
-        );
     }
 
     protected override void OnStop()
@@ -95,15 +78,12 @@ public class TimeToGambleEvent : EventBase
         _machineManager.AuthorizedInteraction -= OnAuthorizedTerminalInteraction;
         _machineManager.Clear();
         _rewardSpawner.Cleanup();
-        _affectedPlayerCount = 0;
 
         Console.WriteLine("[TimeToGambleEvent] Stopped.");
     }
 
-    private void OnAuthorizedTerminalInteraction(GamblingMachine machine, Player player)
+    private void OnAuthorizedTerminalInteraction(GamblingMachine machine, Player _)
     {
-        Console.WriteLine($"[SCPEventSystem] {player.Nickname} used the gamble terminal.");
-
         GambleRewardPool rewardPool = new(_config.Rewards);
         GambleReward? selectedReward = rewardPool.SelectReward();
 
@@ -112,8 +92,6 @@ public class TimeToGambleEvent : EventBase
             Console.WriteLine("[SCPEventSystem] Gamble result: no reward selected because the reward pool is empty or has no positive weights.");
             return;
         }
-
-        Console.WriteLine($"[SCPEventSystem] Gamble result: {selectedReward.DisplayName}");
 
         Workstation? workstation = machine.BoundWorkstation;
         if (workstation == null || workstation.IsDestroyed)
