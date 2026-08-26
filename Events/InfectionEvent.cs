@@ -219,9 +219,18 @@ public sealed class InfectionEvent : EventBase
         List<Player> finalParticipants = Player.List
             .Where(IsRoundParticipant)
             .ToList();
+        int actualDoctorCount = finalParticipants.Count(player => player.Role == RoleTypeId.Scp049);
+        int nonDoctorScpCount = finalParticipants.Count(
+            player => player.Team == Team.SCPs && player.Role != RoleTypeId.Scp049
+        );
 
         foreach (Player player in finalParticipants)
             ScheduleRoleStatApplication(player);
+
+        Console.WriteLine(
+            $"[SCPEventSystem] Infection initial roles normalized: players={finalParticipants.Count}, " +
+            $"doctors={actualDoctorCount}/{targetDoctorCount}, non049Scps={nonDoctorScpCount}."
+        );
     }
 
     private static void SetStartingRole(Player player, RoleTypeId role)

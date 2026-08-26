@@ -62,6 +62,10 @@ public class TimeToGambleEvent : EventBase
 
         _machineManager.RegisterMachine(gambleMachine, targetWorkstation);
         _machineManager.Subscribe();
+        Console.WriteLine(
+            $"[SCPEventSystem] Time To Gamble attached configured workstation: " +
+            $"room='{targetRoom.Name}', index='{_config.TargetWorkstationIndex}'."
+        );
 
         foreach (Player player in Player.List)
         {

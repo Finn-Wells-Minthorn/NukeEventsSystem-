@@ -34,6 +34,12 @@ public sealed class SpeedDemonEvent : EventBase
             8
         );
 
+        Console.WriteLine(
+            $"[SCPEventSystem] Speed Demon activated: humanIntensity='{_config.Intensity}', " +
+            $"scpIntensity='{_config.ScpIntensity}', staminaDrainMultiplier='{_config.StaminaDrainMultiplier}', " +
+            $"staminaRegenerationMultiplier='{_config.StaminaRegenerationMultiplier}'."
+        );
+
         Subscribe();
         _staminaHandle = Timing.CallContinuously(0.1f, AdjustStamina, () => { });
 
