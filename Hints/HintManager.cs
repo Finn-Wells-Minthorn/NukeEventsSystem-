@@ -21,6 +21,15 @@ internal sealed class HintManager : CustomEventsHandler
     private const float MinimumExternalHintDurationSeconds = 0.05f;
     private const float ExternalHintRestorePaddingSeconds = 0.15f;
 
+    // Native hints can leave the client's shared hint alpha at zero when their
+    // fade effect ends. RueI resets it with a constant curve on every owned
+    // render so a restored hint is visible instead of merely being resent.
+    private static readonly HintEffect[] OwnedHintEffects =
+    {
+        new AlphaCurveHintEffect(
+            UnityEngine.AnimationCurve.Constant(0f, PersistentHintDurationSeconds, 1f)),
+    };
+
     private readonly Harmony _harmony = new(HarmonyId);
     private readonly HintStateRegistry _states = new();
     private readonly Dictionary<uint, PendingRestore> _pendingRestores = new();
@@ -218,7 +227,7 @@ internal sealed class HintManager : CustomEventsHandler
         ++_ownedSendDepth;
         try
         {
-            player.SendHint(content, durationSeconds);
+            player.SendHint(content, OwnedHintEffects, durationSeconds);
         }
         finally
         {
