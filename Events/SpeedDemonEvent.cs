@@ -16,7 +16,6 @@ public sealed class SpeedDemonEvent : EventBase
     private readonly Dictionary<uint, float> _originalStamina = new();
     private readonly Dictionary<uint, float> _lastStamina = new();
     private CoroutineHandle _staminaHandle;
-    private DateTime _lastStaminaDebugLog;
     private bool _subscribed;
 
     public SpeedDemonEvent(SpeedDemonEventConfig? config = null)
@@ -36,7 +35,9 @@ public sealed class SpeedDemonEvent : EventBase
         );
 
         Console.WriteLine(
-            $"[SCPEventSystem] Speed Demon activated: humanIntensity='{_config.Intensity}', scpIntensity='{_config.ScpIntensity}', staminaDrainMultiplier='{_config.StaminaDrainMultiplier}', staminaRegenerationMultiplier='{_config.StaminaRegenerationMultiplier}'."
+            $"[SCPEventSystem] Speed Demon activated: humanIntensity='{_config.Intensity}', " +
+            $"scpIntensity='{_config.ScpIntensity}', staminaDrainMultiplier='{_config.StaminaDrainMultiplier}', " +
+            $"staminaRegenerationMultiplier='{_config.StaminaRegenerationMultiplier}'."
         );
 
         Subscribe();
@@ -78,7 +79,6 @@ public sealed class SpeedDemonEvent : EventBase
         _affectedPlayers.Clear();
         _originalStamina.Clear();
         _lastStamina.Clear();
-        _lastStaminaDebugLog = default;
     }
 
     private void Subscribe()
@@ -144,13 +144,6 @@ public sealed class SpeedDemonEvent : EventBase
             false
         );
 
-        MovementBoost? appliedEffect = player.GetEffect<MovementBoost>();
-        bool isEnabled = appliedEffect != null && appliedEffect.IsEnabled;
-        byte appliedIntensity = appliedEffect?.Intensity ?? 0;
-        float remainingDuration = appliedEffect?.TimeLeft ?? 0f;
-        Console.WriteLine(
-            $"[SCPEventSystem] Speed Demon applied: player='{player.Nickname}', type='{(player.IsSCP ? "SCP" : "Human")}', intensity='{intensity}', effectEnabled='{isEnabled}', actualIntensity='{appliedIntensity}', configuredDuration='{_config.DurationSeconds}', remainingDuration='{remainingDuration}'."
-        );
     }
 
     private void AdjustStamina()
@@ -174,14 +167,6 @@ public sealed class SpeedDemonEvent : EventBase
             if (delta < 0f)
             {
                 currentStamina = previousStamina + (delta * Math.Max(0f, _config.StaminaDrainMultiplier));
-
-                if ((DateTime.UtcNow - _lastStaminaDebugLog).TotalSeconds >= 1d)
-                {
-                    Console.WriteLine(
-                        $"[SCPEventSystem] Speed Demon stamina drain: player='{player.Nickname}', type='{(player.IsSCP ? "SCP" : "Human")}', rawDelta='{delta:0.###}', adjustedDelta='{(delta * _config.StaminaDrainMultiplier):0.###}', stamina='{currentStamina:0.###}'."
-                    );
-                    _lastStaminaDebugLog = DateTime.UtcNow;
-                }
             }
             else if (delta > 0f)
             {

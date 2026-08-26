@@ -34,7 +34,6 @@ public sealed class GambleRewardSpawner
             }
 
             _spawnedPickups.Add(pickup);
-            Console.WriteLine($"[SCPEventSystem] Spawned gamble reward: {reward.DisplayName}");
             return pickup;
         }
         catch (Exception ex)
