@@ -6,6 +6,7 @@ internal sealed class HintPlayerState
 {
     private readonly Dictionary<HintElementId, HintElement> _elements = new();
     private int _externalHintGeneration;
+    private ulong _externalHintFingerprint;
 
     public IEnumerable<HintElement> Elements => _elements.Values;
 
@@ -30,10 +31,14 @@ internal sealed class HintPlayerState
 
     public void ClearElements() => _elements.Clear();
 
-    public int BeginExternalHint()
+    public bool IsSameExternalHint(ulong fingerprint) =>
+        IsExternalHintActive && _externalHintFingerprint == fingerprint;
+
+    public int BeginExternalHint(ulong fingerprint = 0UL)
     {
         IsExternalHintActive = true;
         IsOwnedHintVisible = false;
+        _externalHintFingerprint = fingerprint;
         return ++_externalHintGeneration;
     }
 

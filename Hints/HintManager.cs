@@ -10,6 +10,7 @@ using LabApi.Events.CustomHandlers;
 using LabApi.Features.Console;
 using LabApi.Features.Wrappers;
 using MEC;
+using Mirror;
 
 namespace MyFirstPlugin.Hints;
 
@@ -156,16 +157,22 @@ internal sealed class HintManager : CustomEventsHandler
         Render(player, state, force: true);
     }
 
-    internal void OnHintShown(Player player, float durationSeconds)
+    internal void OnHintShown(Player player, Hint hint)
     {
         if (!_enabled || _ownedSendDepth > 0 || !CanReceiveHints(player))
             return;
 
         uint networkId = player.NetworkId;
         HintPlayerState state = _states.GetOrCreate(networkId);
+
+        ulong fingerprint = CreateHintFingerprint(hint);
+        if (state.IsSameExternalHint(fingerprint) && _pendingRestores.ContainsKey(networkId))
+            return;
+
         CancelPendingRestore(networkId);
 
-        int generation = state.BeginExternalHint();
+        int generation = state.BeginExternalHint(fingerprint);
+        float durationSeconds = hint.DurationScalar;
 
         if (float.IsPositiveInfinity(durationSeconds))
             return;
@@ -196,6 +203,36 @@ internal sealed class HintManager : CustomEventsHandler
 
     private static bool CanReceiveHints(Player? player) =>
         player != null && !player.IsDestroyed && !player.IsHost;
+
+    private static ulong CreateHintFingerprint(Hint hint)
+    {
+        const ulong offsetBasis = 14695981039346656037UL;
+        const ulong prime = 1099511628211UL;
+
+        ulong hash = offsetBasis;
+        string typeName = hint.GetType().FullName ?? hint.GetType().Name;
+
+        foreach (char character in typeName)
+        {
+            hash ^= character;
+            hash *= prime;
+        }
+
+        using NetworkWriterPooled writer = NetworkWriterPool.Get();
+        hint.Serialize(writer);
+
+        ArraySegment<byte> payload = writer.ToArraySegment();
+        byte[] buffer = payload.Array ?? Array.Empty<byte>();
+        int end = payload.Offset + payload.Count;
+
+        for (int index = payload.Offset; index < end; ++index)
+        {
+            hash ^= buffer[index];
+            hash *= prime;
+        }
+
+        return hash;
+    }
 
     private void Render(Player player, HintPlayerState state, bool force)
     {

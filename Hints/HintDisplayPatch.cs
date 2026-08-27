@@ -25,7 +25,7 @@ internal static class HintDisplayPatch
             if (!ReferenceHub.TryGetHub(connection, out ReferenceHub hub))
                 return;
 
-            HintPatchBridge.NotifyExternalHint(Player.Get(hub), hint.DurationScalar);
+            HintPatchBridge.NotifyExternalHint(Player.Get(hub), hint);
         }
         catch (Exception exception)
         {
@@ -54,6 +54,6 @@ internal static class HintPatchBridge
             _manager = null;
     }
 
-    public static void NotifyExternalHint(Player player, float durationSeconds) =>
-        _manager?.OnHintShown(player, durationSeconds);
+    public static void NotifyExternalHint(Player player, Hint hint) =>
+        _manager?.OnHintShown(player, hint);
 }

@@ -17,9 +17,10 @@ internal static class Program
         Run("global cleanup", GlobalCleanup);
         Run("duplicate state registration", DuplicateStateRegistration);
         Run("stale callback generation", StaleCallbackGeneration);
+        Run("duplicate external hint detection", DuplicateExternalHintDetection);
         Run("composer positioning and formatting", ComposerPositioningAndFormatting);
 
-        Console.WriteLine($"Hint framework tests passed: {_passed}/9");
+        Console.WriteLine($"Hint framework tests passed: {_passed}/10");
         return 0;
     }
 
@@ -119,6 +120,18 @@ internal static class Program
         Assert(!state.CompleteExternalHint(firstGeneration), "An old restore callback must not complete.");
         Assert(state.IsExternalHintActive, "The current external hint must remain active.");
         Assert(state.CompleteExternalHint(secondGeneration), "The current restore callback should complete.");
+    }
+
+    private static void DuplicateExternalHintDetection()
+    {
+        HintPlayerState state = new();
+        state.BeginExternalHint(100UL);
+
+        Assert(state.IsSameExternalHint(100UL), "An identical active native hint should be detected.");
+        Assert(!state.IsSameExternalHint(200UL), "A different native hint must not be treated as a duplicate.");
+
+        state.CancelExternalHint();
+        Assert(!state.IsSameExternalHint(100UL), "A completed or cancelled native hint must not suppress a later copy.");
     }
 
     private static void ComposerPositioningAndFormatting()
