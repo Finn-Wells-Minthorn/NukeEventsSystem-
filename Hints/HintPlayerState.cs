@@ -12,6 +12,8 @@ internal sealed class HintPlayerState
 
     public int ElementCount => _elements.Count;
 
+    public int ExternalHintGeneration => _externalHintGeneration;
+
     public bool IsExternalHintActive { get; private set; }
 
     public bool IsOwnedHintVisible { get; set; }

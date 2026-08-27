@@ -90,6 +90,10 @@ public sealed class HintTestCommand : ICommand
                 response = "Cleared all Nuke Events hints for the player.";
                 return true;
 
+            case "status":
+                response = manager.GetDiagnosticStatus(player);
+                return true;
+
             default:
                 response = BuildUsage();
                 return false;
@@ -115,5 +119,5 @@ public sealed class HintTestCommand : ICommand
     }
 
     private static string BuildUsage() =>
-        "Usage: nukehinttest <playerId> <show|update|multi|remove|clear> [verticalPosition]";
+        "Usage: nukehinttest <playerId> <show|update|multi|remove|clear|status> [verticalPosition]";
 }

@@ -157,6 +157,20 @@ internal sealed class HintManager : CustomEventsHandler
         Render(player, state, force: true);
     }
 
+    internal string GetDiagnosticStatus(Player player)
+    {
+        uint networkId = player.NetworkId;
+        if (!_states.TryGet(networkId, out HintPlayerState state))
+            return "No Nuke Events hint state is tracked for this player.";
+
+        bool hasPendingRestore = _pendingRestores.TryGetValue(networkId, out PendingRestore pending);
+        bool pendingHandleValid = hasPendingRestore && pending.Handle.IsValid;
+
+        return $"Hint state: elements={state.ElementCount}, externalActive={state.IsExternalHintActive}, " +
+               $"externalGeneration={state.ExternalHintGeneration}, pendingRestore={hasPendingRestore}, " +
+               $"pendingHandleValid={pendingHandleValid}, ownedVisible={state.IsOwnedHintVisible}.";
+    }
+
     internal void OnHintShown(Player player, Hint hint)
     {
         if (!_enabled || _ownedSendDepth > 0 || !CanReceiveHints(player))
