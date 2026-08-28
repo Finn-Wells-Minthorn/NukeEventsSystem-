@@ -16,6 +16,7 @@ internal sealed class BottomInfoPresenter
     private readonly BottomInfoLoopState _loopState = new();
     private CoroutineHandle _cycleHandle;
     private string? _currentContent;
+    private float _currentDurationSeconds;
 
     public BottomInfoPresenter(BottomInfoConfig? config)
     {
@@ -25,9 +26,16 @@ internal sealed class BottomInfoPresenter
             new ServerInfoProvider(
                 _config.ShowServerInfo,
                 _config.ServerInfoText,
-                _config.ServerInfoColor),
-            new EventDetailsProvider(_config.ShowEventDetails),
-            new TipProvider(_config.ShowTips, _config.Tips, _config.TipColor)
+                _config.ServerInfoColor,
+                _config.ServerInfoDurationSeconds),
+            new EventDetailsProvider(
+                _config.ShowEventDetails,
+                _config.EventDetailsDurationSeconds),
+            new TipProvider(
+                _config.TipsEnabled,
+                _config.Tips,
+                _config.TipColor,
+                _config.TipDurationSeconds)
         });
     }
 
@@ -39,7 +47,12 @@ internal sealed class BottomInfoPresenter
             return false;
 
         _cycle.Reset();
-        ShowNext();
+        if (!ShowNext())
+        {
+            _loopState.Stop();
+            return false;
+        }
+
         _cycleHandle = Timing.RunCoroutine(RunCycle(generation));
         return true;
     }
@@ -53,6 +66,7 @@ internal sealed class BottomInfoPresenter
 
         _cycleHandle = default;
         _currentContent = null;
+        _currentDurationSeconds = 0f;
         RemoveFromAllPlayers();
     }
 
@@ -73,16 +87,15 @@ internal sealed class BottomInfoPresenter
     {
         try
         {
-            float intervalSeconds = Math.Max(MinimumCycleIntervalSeconds, _config.CycleIntervalSeconds);
-
             while (_loopState.IsCurrent(generation))
             {
-                yield return Timing.WaitForSeconds(intervalSeconds);
+                yield return Timing.WaitForSeconds(_currentDurationSeconds);
 
                 if (!_loopState.IsCurrent(generation))
                     yield break;
 
-                ShowNext();
+                if (!ShowNext())
+                    yield break;
             }
         }
         finally
@@ -95,13 +108,14 @@ internal sealed class BottomInfoPresenter
         }
     }
 
-    private void ShowNext()
+    private bool ShowNext()
     {
         if (!_cycle.TryGetNext(CreateContext(), out BottomInfoContent entry))
         {
             _currentContent = null;
+            _currentDurationSeconds = 0f;
             RemoveFromAllPlayers();
-            return;
+            return false;
         }
 
         _currentContent = HintUiFormatter.FormatBottomText(
@@ -109,9 +123,14 @@ internal sealed class BottomInfoPresenter
             entry.Color,
             _config.TextColor,
             _config.FontSize);
+        _currentDurationSeconds = Math.Max(
+            MinimumCycleIntervalSeconds,
+            entry.DurationSeconds);
 
         foreach (Player player in Player.List)
             ShowCurrent(player);
+
+        return true;
     }
 
     private static BottomInfoContext CreateContext()
@@ -121,7 +140,7 @@ internal sealed class BottomInfoPresenter
             return default;
 
         return new BottomInfoContext(
-            currentEvent.Name,
+            currentEvent.DisplayName,
             currentEvent.DisplayDescription,
             currentEvent.DisplayColor);
     }

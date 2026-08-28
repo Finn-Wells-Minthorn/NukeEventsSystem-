@@ -21,10 +21,7 @@ public class TimeToGambleEvent : EventBase
 
     public override string Name => "Time To Gamble (Development)";
 
-    public override string Description =>
-        "A modular event that strips starting equipment from human players and detects interaction with one existing workstation.";
-
-    public override string DisplayColor => _config.DisplayColor;
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {

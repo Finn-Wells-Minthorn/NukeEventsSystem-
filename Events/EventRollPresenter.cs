@@ -14,6 +14,7 @@ public sealed class EventRollPresenter
     private bool _isCancelled;
     private bool _isRunning;
     private bool _isVisible;
+    private bool _isFinalResult;
     private EventBase? _displayedEvent;
 
     private const string HeaderText = "Selecting Event...";
@@ -33,6 +34,7 @@ public sealed class EventRollPresenter
     public void ShowHeader()
     {
         _isVisible = true;
+        _isFinalResult = false;
         _displayedEvent = null;
 
         foreach (Player player in Player.List)
@@ -63,17 +65,27 @@ public sealed class EventRollPresenter
         manager.Set(
             player,
             HintElementId.LobbyEventName,
-            HintUiFormatter.FormatEventName(_displayedEvent.Name, _displayedEvent.DisplayColor),
+            HintUiFormatter.FormatEventName(
+                _displayedEvent.DisplayName,
+                _displayedEvent.DisplayColor,
+                _isFinalResult),
             _config.EventNameVerticalPosition);
     }
 
-    public void Start(EventBase selectedEvent, IReadOnlyList<EventBase> enabledEvents, Action<EventBase>? onCompleted)
+    public void Start(
+        EventBase selectedEvent,
+        IReadOnlyList<EventBase> enabledEvents,
+        Func<float> getRemainingCountdownSeconds,
+        Action<EventBase>? onCompleted)
     {
         if (selectedEvent == null)
             throw new ArgumentNullException(nameof(selectedEvent));
 
         if (enabledEvents == null)
             throw new ArgumentNullException(nameof(enabledEvents));
+
+        if (getRemainingCountdownSeconds == null)
+            throw new ArgumentNullException(nameof(getRemainingCountdownSeconds));
 
         CancelRoll();
 
@@ -86,7 +98,7 @@ public sealed class EventRollPresenter
         if (eventOptions.Count == 0)
         {
             _isRunning = false;
-            ShowEvent(selectedEvent);
+            ShowEvent(selectedEvent, isFinalResult: true);
             onCompleted?.Invoke(selectedEvent);
             return;
         }
@@ -98,7 +110,8 @@ public sealed class EventRollPresenter
 
         _isCancelled = false;
         _isRunning = true;
-        _rollHandle = Timing.RunCoroutine(RunRoll(selectedEvent, eventOptions, onCompleted));
+        _rollHandle = Timing.RunCoroutine(
+            RunRoll(selectedEvent, eventOptions, getRemainingCountdownSeconds, onCompleted));
     }
 
     public void Cancel()
@@ -118,61 +131,48 @@ public sealed class EventRollPresenter
         _isRunning = false;
     }
 
-    private IEnumerator<float> RunRoll(EventBase selectedEvent, List<EventBase> eventOptions, Action<EventBase>? onCompleted)
+    private IEnumerator<float> RunRoll(
+        EventBase selectedEvent,
+        List<EventBase> eventOptions,
+        Func<float> getRemainingCountdownSeconds,
+        Action<EventBase>? onCompleted)
     {
         try
         {
             if (_isCancelled)
                 yield break;
 
-            int winnerIndex = eventOptions.FindIndex(
-                x => string.Equals(x.Name, selectedEvent.Name, StringComparison.OrdinalIgnoreCase));
-            if (winnerIndex < 0)
-                winnerIndex = 0;
+            float remainingCountdownSeconds = Math.Max(0f, getRemainingCountdownSeconds());
+            float availableAnimationSeconds = Math.Max(
+                0f,
+                remainingCountdownSeconds -
+                RouletteTiming.FinalWindowSeconds -
+                RouletteTiming.CountdownSafetyMarginSeconds);
 
-            int currentIndex = 0;
-            float interval = Math.Max(0.04f, _config.InitialIntervalSeconds);
-            int stepCount = Math.Max(10, _config.RollIterationCount);
+            RouletteAnimationPlan<EventBase> plan = RouletteAnimationPlan<EventBase>.Create(
+                selectedEvent,
+                eventOptions,
+                availableAnimationSeconds);
 
-            for (int i = 0; i < stepCount && !_isCancelled; i++)
+            foreach (RouletteFrame<EventBase> frame in plan.Frames)
             {
-                if (i >= Math.Max(5, stepCount - 6))
+                if (_isCancelled ||
+                    !RouletteTiming.CanWaitBeforeCutoff(
+                        getRemainingCountdownSeconds(),
+                        frame.Delay.Seconds))
                 {
-                    currentIndex = winnerIndex;
-                }
-                else
-                {
-                    currentIndex = (currentIndex + 1) % eventOptions.Count;
+                    break;
                 }
 
-                ShowEvent(eventOptions[currentIndex]);
-                yield return Timing.WaitForSeconds(interval);
-
-                if (i < stepCount / 2)
-                {
-                    interval = Math.Min(_config.MaxIntervalSeconds, interval + 0.025f);
-                }
-                else
-                {
-                    interval = Math.Min(_config.MaxIntervalSeconds, interval + 0.05f);
-                }
+                ShowEvent(frame.Value, isFinalResult: false);
+                yield return Timing.WaitForSeconds(frame.Delay.Seconds);
             }
 
             if (_isCancelled)
                 yield break;
 
-            ShowEvent(selectedEvent);
-            yield return Timing.WaitForSeconds(0.2f);
-
-            if (_isCancelled)
-                yield break;
-
-            yield return Timing.WaitForSeconds(Math.Max(0.25f, _config.FinalResultDisplaySeconds / 3f));
-
-            if (_isCancelled)
-                yield break;
-
-            onCompleted?.Invoke(selectedEvent);
+            ShowEvent(plan.SelectedWinner, isFinalResult: true);
+            onCompleted?.Invoke(plan.SelectedWinner);
         }
         finally
         {
@@ -182,9 +182,10 @@ public sealed class EventRollPresenter
         }
     }
 
-    private void ShowEvent(EventBase eventInstance)
+    private void ShowEvent(EventBase eventInstance, bool isFinalResult)
     {
         _isVisible = true;
+        _isFinalResult = isFinalResult;
         _displayedEvent = eventInstance;
 
         foreach (Player player in Player.List)
@@ -194,6 +195,7 @@ public sealed class EventRollPresenter
     private void ClearDisplay()
     {
         _isVisible = false;
+        _isFinalResult = false;
         _displayedEvent = null;
 
         HintManager? manager = global::MyFirstPlugin.MyFirstPlugin.Hints;
@@ -213,12 +215,4 @@ public class EventRollConfig
     public float HeaderVerticalPosition { get; set; } = 250f;
 
     public float EventNameVerticalPosition { get; set; } = 205f;
-
-    public float InitialIntervalSeconds { get; set; } = 0.06f;
-
-    public float MaxIntervalSeconds { get; set; } = 0.5f;
-
-    public ushort FinalResultDisplaySeconds { get; set; } = 1;
-
-    public int RollIterationCount { get; set; } = 18;
 }

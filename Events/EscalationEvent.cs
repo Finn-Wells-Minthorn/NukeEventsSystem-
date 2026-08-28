@@ -28,10 +28,7 @@ public sealed class EscalationEvent : EventBase
 
     public override string Name => "Escalation";
 
-    public override string Description =>
-        "SCPs begin empowered while the surviving humans progressively gain stronger advantages.";
-
-    public override string DisplayColor => _config.DisplayColor;
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {
