@@ -29,6 +29,7 @@ internal static class Program
         Run("configured event metadata retrieval", ConfiguredEventMetadataRetrieval);
         Run("default event display-name casing", DefaultEventDisplayNameCasing);
         Run("uploaded bottom-info values are defaults", UploadedBottomInfoValuesAreDefaults);
+        Run("pre-round server info is standalone", PreRoundServerInfoIsStandalone);
         Run("custom event display-name casing is preserved", CustomEventDisplayNameCasingIsPreserved);
         Run("roulette shares configured event color", RouletteSharesConfiguredEventColor);
         Run("roulette keeps preselected winner", RouletteKeepsPreselectedWinner);
@@ -288,6 +289,24 @@ internal static class Program
             "Tips should be disabled by default to match the uploaded config.");
         Assert(Math.Abs(config.TipDurationSeconds - 45f) < 0.001f,
             "The uploaded tip duration should remain the default.");
+    }
+
+    private static void PreRoundServerInfoIsStandalone()
+    {
+        BottomInfoConfig config = new();
+        ServerInfoProvider provider = new(
+            config.ShowServerInfo,
+            config.ServerInfoText,
+            config.ServerInfoColor,
+            config.ServerInfoDurationSeconds);
+        BottomInfoLoopState loopState = new();
+
+        Assert(provider.TryGetContent(default, out BottomInfoContent content),
+            "Server info should be available without an active event.");
+        Assert(content.Text == "NUKE EVENTS",
+            "Pre-round server info should use the configured server text.");
+        Assert(!loopState.IsRunning,
+            "Displaying only pre-round server info must not start a rotation loop.");
     }
 
     private static void CustomEventDisplayNameCasingIsPreserved()

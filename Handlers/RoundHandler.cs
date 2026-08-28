@@ -17,6 +17,8 @@ public class RoundHandler : CustomEventsHandler
     private readonly EventSelector _eventSelector = new();
     private BottomInfoPresenter? _bottomInfoPresenter;
     private EventRollPresenter? _eventRollPresenter;
+    private CoroutineHandle _serverInfoRestoreHandle;
+    private int _serverInfoRestoreGeneration;
     private CoroutineHandle _countdownWatcherHandle;
     private EventBase? _pendingEvent;
     private bool _isActive;
@@ -31,6 +33,7 @@ public class RoundHandler : CustomEventsHandler
 
     public void Activate()
     {
+        CancelServerInfoRestore();
         CancelPendingSelection();
         _bottomInfoPresenter?.Stop();
         EventManager.EventStarting -= OnEventStarting;
@@ -42,6 +45,7 @@ public class RoundHandler : CustomEventsHandler
     {
         _isActive = false;
         EventManager.EventStarting -= OnEventStarting;
+        CancelServerInfoRestore();
         CancelPendingSelection();
         _bottomInfoPresenter?.Stop();
     }
@@ -61,6 +65,42 @@ public class RoundHandler : CustomEventsHandler
         _countdownWatcherHandle = default;
     }
 
+    private void ScheduleServerInfoRestore()
+    {
+        CancelServerInfoRestore();
+        int generation = ++_serverInfoRestoreGeneration;
+        _serverInfoRestoreHandle = Timing.RunCoroutine(
+            RestoreServerInfoAfterLifecycleCleanup(generation));
+    }
+
+    private void CancelServerInfoRestore()
+    {
+        ++_serverInfoRestoreGeneration;
+
+        if (_serverInfoRestoreHandle.IsValid)
+            Timing.KillCoroutines(_serverInfoRestoreHandle);
+
+        _serverInfoRestoreHandle = default;
+    }
+
+    private IEnumerator<float> RestoreServerInfoAfterLifecycleCleanup(int generation)
+    {
+        try
+        {
+            // HintManager clears all owned elements on round/lobby lifecycle
+            // events. Restore the persistent server entry after that cleanup.
+            yield return Timing.WaitForSeconds(0.1f);
+
+            if (_isActive && generation == _serverInfoRestoreGeneration)
+                BottomInfoPresenter.ShowServerInfo();
+        }
+        finally
+        {
+            if (generation == _serverInfoRestoreGeneration)
+                _serverInfoRestoreHandle = default;
+        }
+    }
+
     private void OnEventStarting(EventBase eventInstance)
     {
         if (!_isActive)
@@ -76,6 +116,7 @@ public class RoundHandler : CustomEventsHandler
 
         Logger.Info("[SCPEventSystem] Waiting for players.");
         _bottomInfoPresenter?.Stop();
+        ScheduleServerInfoRestore();
         CancelPendingSelection();
         _countdownWatcherHandle = Timing.RunCoroutine(WatchForCountdown());
     }
@@ -161,6 +202,7 @@ public class RoundHandler : CustomEventsHandler
         if (!_isActive)
             return;
 
+        CancelServerInfoRestore();
         CancelCountdownWatcher();
 
         if (!global::MyFirstPlugin.MyFirstPlugin.AutomaticEventsEnabled || EventManager.CurrentEvent != null)
@@ -181,6 +223,7 @@ public class RoundHandler : CustomEventsHandler
 
         Logger.Info("[SCPEventSystem] Round started.");
 
+        CancelServerInfoRestore();
         CancelCountdownWatcher();
         _eventRollPresenter?.Cancel();
         BottomInfoPresenter.Start();
@@ -224,6 +267,7 @@ public class RoundHandler : CustomEventsHandler
         _bottomInfoPresenter?.Stop();
         CancelPendingSelection();
         EventManager.StopCurrentEvent();
+        ScheduleServerInfoRestore();
     }
 
     public override void OnServerRoundRestarted()
@@ -232,6 +276,7 @@ public class RoundHandler : CustomEventsHandler
         _bottomInfoPresenter?.Stop();
         CancelPendingSelection();
         EventManager.StopCurrentEvent();
+        ScheduleServerInfoRestore();
     }
 
     public override void OnPlayerJoined(PlayerJoinedEventArgs ev)

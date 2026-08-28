@@ -12,22 +12,25 @@ internal sealed class BottomInfoPresenter
     private const float MinimumCycleIntervalSeconds = 1f;
 
     private readonly BottomInfoConfig _config;
+    private readonly ServerInfoProvider _serverInfoProvider;
     private readonly BottomInfoCycle _cycle;
     private readonly BottomInfoLoopState _loopState = new();
     private CoroutineHandle _cycleHandle;
+    private bool _isVisible;
     private string? _currentContent;
     private float _currentDurationSeconds;
 
     public BottomInfoPresenter(BottomInfoConfig? config)
     {
         _config = config ?? new BottomInfoConfig();
+        _serverInfoProvider = new ServerInfoProvider(
+            _config.ShowServerInfo,
+            _config.ServerInfoText,
+            _config.ServerInfoColor,
+            _config.ServerInfoDurationSeconds);
         _cycle = new BottomInfoCycle(new IBottomInfoProvider[]
         {
-            new ServerInfoProvider(
-                _config.ShowServerInfo,
-                _config.ServerInfoText,
-                _config.ServerInfoColor,
-                _config.ServerInfoDurationSeconds),
+            _serverInfoProvider,
             new EventDetailsProvider(
                 _config.ShowEventDetails,
                 _config.EventDetailsDurationSeconds),
@@ -57,7 +60,28 @@ internal sealed class BottomInfoPresenter
         return true;
     }
 
+    public bool ShowServerInfo()
+    {
+        StopCycle();
+
+        if (!_config.Enabled ||
+            !_serverInfoProvider.TryGetContent(default, out BottomInfoContent content))
+        {
+            ClearDisplay();
+            return false;
+        }
+
+        ShowContent(content);
+        return true;
+    }
+
     public void Stop()
+    {
+        StopCycle();
+        ClearDisplay();
+    }
+
+    private void StopCycle()
     {
         _loopState.Stop();
 
@@ -65,6 +89,11 @@ internal sealed class BottomInfoPresenter
             Timing.KillCoroutines(_cycleHandle);
 
         _cycleHandle = default;
+    }
+
+    private void ClearDisplay()
+    {
+        _isVisible = false;
         _currentContent = null;
         _currentDurationSeconds = 0f;
         RemoveFromAllPlayers();
@@ -72,7 +101,7 @@ internal sealed class BottomInfoPresenter
 
     public void ShowCurrent(Player player)
     {
-        if (!_loopState.IsRunning || string.IsNullOrEmpty(_currentContent))
+        if (!_isVisible || string.IsNullOrEmpty(_currentContent))
             return;
 
         HintManager? manager = global::MyFirstPlugin.MyFirstPlugin.Hints;
@@ -112,25 +141,28 @@ internal sealed class BottomInfoPresenter
     {
         if (!_cycle.TryGetNext(CreateContext(), out BottomInfoContent entry))
         {
-            _currentContent = null;
-            _currentDurationSeconds = 0f;
-            RemoveFromAllPlayers();
+            ClearDisplay();
             return false;
         }
 
+        ShowContent(entry);
+        return true;
+    }
+
+    private void ShowContent(BottomInfoContent content)
+    {
         _currentContent = HintUiFormatter.FormatBottomText(
-            entry.Text,
-            entry.Color,
+            content.Text,
+            content.Color,
             _config.TextColor,
             _config.FontSize);
         _currentDurationSeconds = Math.Max(
             MinimumCycleIntervalSeconds,
-            entry.DurationSeconds);
+            content.DurationSeconds);
+        _isVisible = true;
 
         foreach (Player player in Player.List)
             ShowCurrent(player);
-
-        return true;
     }
 
     private static BottomInfoContext CreateContext()
