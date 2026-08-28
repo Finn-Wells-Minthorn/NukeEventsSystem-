@@ -28,6 +28,7 @@ internal static class Program
         Run("event color fallback", EventColorFallback);
         Run("configured event metadata retrieval", ConfiguredEventMetadataRetrieval);
         Run("default event display-name casing", DefaultEventDisplayNameCasing);
+        Run("uploaded bottom-info values are defaults", UploadedBottomInfoValuesAreDefaults);
         Run("custom event display-name casing is preserved", CustomEventDisplayNameCasingIsPreserved);
         Run("roulette shares configured event color", RouletteSharesConfiguredEventColor);
         Run("roulette keeps preselected winner", RouletteKeepsPreselectedWinner);
@@ -259,17 +260,34 @@ internal static class Program
 
     private static void DefaultEventDisplayNameCasing()
     {
-        Assert(DefaultEventDisplayNames.Infection == "Infection", "Infection default casing changed unexpectedly.");
-        Assert(DefaultEventDisplayNames.JailbirdMayhem == "Jailbird mayhem",
-            "Jailbird mayhem should use normal sentence casing.");
-        Assert(DefaultEventDisplayNames.Escalation == "Escalation",
-            "Escalation default casing changed unexpectedly.");
-        Assert(DefaultEventDisplayNames.SpeedDemon == "Speed demon",
-            "Speed demon should use normal sentence casing.");
-        Assert(DefaultEventDisplayNames.TimeToGamble == "Time to gamble (development)",
-            "Time to gamble should use normal sentence casing.");
-        Assert(DefaultEventDisplayNames.Blackout == "Blackout event",
-            "Blackout event should use normal sentence casing.");
+        Assert(DefaultEventDisplayNames.JailbirdMayhem == "jailbird mayhem",
+            "Jailbird mayhem should use the requested lowercase default.");
+        Assert(DefaultEventDisplayNames.SpeedDemon == "speed demon",
+            "Speed demon should use the requested lowercase default.");
+        Assert(DefaultEventDisplayNames.TimeToGamble == "time to gamble",
+            "Time to gamble should use the requested lowercase default.");
+        Assert(DefaultEventDisplayNames.Blackout == "blackout event",
+            "Blackout event should use the requested lowercase default.");
+        Assert(DefaultEventDisplayNames.Infection == "infection",
+            "Infection should use the requested lowercase default.");
+        Assert(DefaultEventDisplayNames.Escalation == "escalation",
+            "Escalation should use the requested lowercase default.");
+    }
+
+    private static void UploadedBottomInfoValuesAreDefaults()
+    {
+        BottomInfoConfig config = new();
+
+        Assert(Math.Abs(config.VerticalPosition - 2f) < 0.001f,
+            "The uploaded bottom position should be the default.");
+        Assert(Math.Abs(config.ServerInfoDurationSeconds - 40f) < 0.001f,
+            "The uploaded server-info duration should be the default.");
+        Assert(Math.Abs(config.EventDetailsDurationSeconds - 10f) < 0.001f,
+            "The uploaded event-details duration should be the default.");
+        Assert(!config.TipsEnabled,
+            "Tips should be disabled by default to match the uploaded config.");
+        Assert(Math.Abs(config.TipDurationSeconds - 45f) < 0.001f,
+            "The uploaded tip duration should remain the default.");
     }
 
     private static void CustomEventDisplayNameCasingIsPreserved()

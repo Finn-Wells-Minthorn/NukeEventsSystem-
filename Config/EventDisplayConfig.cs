@@ -11,10 +11,10 @@ public sealed class EventDisplayConfig
 
 internal static class DefaultEventDisplayNames
 {
-    public const string Infection = "Infection";
-    public const string JailbirdMayhem = "Jailbird mayhem";
-    public const string Escalation = "Escalation";
-    public const string SpeedDemon = "Speed demon";
-    public const string TimeToGamble = "Time to gamble (development)";
-    public const string Blackout = "Blackout event";
+    public const string Infection = "infection";
+    public const string JailbirdMayhem = "jailbird mayhem";
+    public const string Escalation = "escalation";
+    public const string SpeedDemon = "speed demon";
+    public const string TimeToGamble = "time to gamble";
+    public const string Blackout = "blackout event";
 }
