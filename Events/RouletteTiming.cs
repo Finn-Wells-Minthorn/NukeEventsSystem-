@@ -27,8 +27,10 @@ internal readonly struct RouletteDelay
 
 internal static class RouletteTiming
 {
+    public const float DefaultDurationSeconds = 4.05f;
     public const float FinalWindowSeconds = 5f;
     public const float CountdownSafetyMarginSeconds = 1f;
+    private const float MinimumSequenceDurationSeconds = 0.5f;
 
     private static readonly IReadOnlyList<RouletteDelay> FullSchedule = new[]
     {
@@ -66,22 +68,38 @@ internal static class RouletteTiming
         new RouletteDelay(RoulettePacingStage.FinalSlowdown, 0.50f)
     };
 
-    public static IReadOnlyList<RouletteDelay> CreateSchedule(float availableAnimationSeconds)
+    public static IReadOnlyList<RouletteDelay> CreateSchedule(
+        float configuredDurationSeconds,
+        float availableAnimationSeconds)
     {
         if (float.IsNaN(availableAnimationSeconds) || availableAnimationSeconds <= 0f)
             return Array.Empty<RouletteDelay>();
 
-        if (GetDuration(FullSchedule) <= availableAnimationSeconds)
-            return FullSchedule;
+        float requestedDurationSeconds = ResolveConfiguredDuration(configuredDurationSeconds);
+        float targetDurationSeconds = Math.Min(requestedDurationSeconds, availableAnimationSeconds);
+        if (targetDurationSeconds < MinimumSequenceDurationSeconds)
+            return Array.Empty<RouletteDelay>();
 
-        if (GetDuration(CompactSchedule) <= availableAnimationSeconds)
-            return CompactSchedule;
+        IReadOnlyList<RouletteDelay> template =
+            targetDurationSeconds >= DefaultDurationSeconds
+                ? FullSchedule
+                : CompactSchedule;
 
-        return Array.Empty<RouletteDelay>();
+        return ScaleSchedule(template, targetDurationSeconds);
     }
 
     public static float GetDuration(IEnumerable<RouletteDelay> schedule) =>
         schedule?.Sum(step => step.Seconds) ?? 0f;
+
+    public static float GetAvailableAnimationSeconds(float remainingCountdownSeconds)
+    {
+        if (float.IsNaN(remainingCountdownSeconds))
+            return 0f;
+
+        return Math.Max(
+            0f,
+            remainingCountdownSeconds - FinalWindowSeconds - CountdownSafetyMarginSeconds);
+    }
 
     public static bool CanWaitBeforeCutoff(
         float remainingCountdownSeconds,
@@ -89,6 +107,34 @@ internal static class RouletteTiming
     {
         float protectedWindow = FinalWindowSeconds + CountdownSafetyMarginSeconds;
         return remainingCountdownSeconds - Math.Max(0f, nextDelaySeconds) > protectedWindow;
+    }
+
+    private static float ResolveConfiguredDuration(float configuredDurationSeconds)
+    {
+        if (float.IsNaN(configuredDurationSeconds) || float.IsInfinity(configuredDurationSeconds))
+            return DefaultDurationSeconds;
+
+        return Math.Max(0f, configuredDurationSeconds);
+    }
+
+    private static IReadOnlyList<RouletteDelay> ScaleSchedule(
+        IReadOnlyList<RouletteDelay> template,
+        float targetDurationSeconds)
+    {
+        float templateDurationSeconds = GetDuration(template);
+        if (templateDurationSeconds <= 0f)
+            return Array.Empty<RouletteDelay>();
+
+        float scale = targetDurationSeconds / templateDurationSeconds;
+        List<RouletteDelay> schedule = new(template.Count);
+
+        for (int index = 0; index < template.Count; index++)
+        {
+            RouletteDelay delay = template[index];
+            schedule.Add(new RouletteDelay(delay.Stage, delay.Seconds * scale));
+        }
+
+        return schedule;
     }
 }
 
@@ -122,12 +168,15 @@ internal sealed class RouletteAnimationPlan<T>
     public static RouletteAnimationPlan<T> Create(
         T selectedWinner,
         IReadOnlyList<T> rollingOptions,
+        float configuredDurationSeconds,
         float availableAnimationSeconds)
     {
         if (rollingOptions == null)
             throw new ArgumentNullException(nameof(rollingOptions));
 
-        IReadOnlyList<RouletteDelay> schedule = RouletteTiming.CreateSchedule(availableAnimationSeconds);
+        IReadOnlyList<RouletteDelay> schedule = RouletteTiming.CreateSchedule(
+            configuredDurationSeconds,
+            availableAnimationSeconds);
         List<RouletteFrame<T>> frames = new(schedule.Count);
 
         for (int index = 0; index < schedule.Count && rollingOptions.Count > 0; index++)

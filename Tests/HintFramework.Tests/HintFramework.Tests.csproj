@@ -14,6 +14,7 @@
     <Compile Include="..\..\Hints\HintUiFormatter.cs" Link="Hints\HintUiFormatter.cs" />
     <Compile Include="..\..\Hints\BottomInfoCycle.cs" Link="Hints\BottomInfoCycle.cs" />
     <Compile Include="..\..\Config\EventDisplayConfig.cs" Link="Config\EventDisplayConfig.cs" />
+    <Compile Include="..\..\Config\EventRollConfig.cs" Link="Config\EventRollConfig.cs" />
     <Compile Include="..\..\Events\EventDisplayMetadata.cs" Link="Events\EventDisplayMetadata.cs" />
     <Compile Include="..\..\Events\RouletteTiming.cs" Link="Events\RouletteTiming.cs" />
   </ItemGroup>

@@ -29,7 +29,7 @@ public class InfectionEventConfig
 {
     public EventDisplayConfig Display { get; set; } = new()
     {
-        Name = "Infection",
+        Name = DefaultEventDisplayNames.Infection,
         Color = "#66FF66",
         Description =
             "Plague Doctors lead an SCP-049-2 horde whose kills convert human survivors into new zombies."
@@ -63,7 +63,7 @@ public class JailbirdMayhemEventConfig
 {
     public EventDisplayConfig Display { get; set; } = new()
     {
-        Name = "Jailbird Mayhem",
+        Name = DefaultEventDisplayNames.JailbirdMayhem,
         Color = "#FFD166",
         Description =
             "Playable humans keep their utility loadouts but replace spawn firearms and ammunition with Jailbirds."
@@ -89,7 +89,7 @@ public class EscalationEventConfig
 {
     public EventDisplayConfig Display { get; set; } = new()
     {
-        Name = "Escalation",
+        Name = DefaultEventDisplayNames.Escalation,
         Color = "#FF8C42",
         Description =
             "SCPs begin empowered while the surviving humans progressively gain stronger advantages."
@@ -155,7 +155,7 @@ public class SpeedDemonEventConfig
 {
     public EventDisplayConfig Display { get; set; } = new()
     {
-        Name = "Speed Demon",
+        Name = DefaultEventDisplayNames.SpeedDemon,
         Color = "#FF4D4D",
         Description = "Everyone moves at extreme speed. Good luck."
     };
@@ -175,7 +175,7 @@ public class TimeToGambleEventConfig
 {
     public EventDisplayConfig Display { get; set; } = new()
     {
-        Name = "Time To Gamble (Development)",
+        Name = DefaultEventDisplayNames.TimeToGamble,
         Color = "#C77DFF",
         Description =
             "A modular event that strips starting equipment from human players and detects interaction with one existing workstation."
@@ -200,7 +200,7 @@ public class BlackoutEventConfig
 {
     public EventDisplayConfig Display { get; set; } = new()
     {
-        Name = "Blackout Event",
+        Name = DefaultEventDisplayNames.Blackout,
         Color = "#6699FF",
         Description =
             "A round-long facility blackout with a delayed cinematic intro and randomized dark and powered periods."

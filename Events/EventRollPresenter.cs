@@ -1,9 +1,9 @@
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using LabApi.Features.Wrappers;
 using MEC;
+using MyFirstPlugin.Config;
 using MyFirstPlugin.Hints;
 
 namespace MyFirstPlugin.Events;
@@ -18,7 +18,7 @@ public sealed class EventRollPresenter
     private bool _isFinalResult;
     private EventBase? _displayedEvent;
 
-    private const string HeaderText = "selecting event";
+    private const string HeaderText = "Selecting Event...";
 
     public EventRollPresenter()
         : this(new EventRollConfig())
@@ -144,15 +144,13 @@ public sealed class EventRollPresenter
                 yield break;
 
             float remainingCountdownSeconds = Math.Max(0f, getRemainingCountdownSeconds());
-            float availableAnimationSeconds = Math.Max(
-                0f,
-                remainingCountdownSeconds -
-                RouletteTiming.FinalWindowSeconds -
-                RouletteTiming.CountdownSafetyMarginSeconds);
+            float availableAnimationSeconds =
+                RouletteTiming.GetAvailableAnimationSeconds(remainingCountdownSeconds);
 
             RouletteAnimationPlan<EventBase> plan = RouletteAnimationPlan<EventBase>.Create(
                 selectedEvent,
                 eventOptions,
+                _config.TotalDurationSeconds,
                 availableAnimationSeconds);
 
             foreach (RouletteFrame<EventBase> frame in plan.Frames)
@@ -209,11 +207,4 @@ public sealed class EventRollPresenter
             manager.Remove(player, HintElementId.LobbyEventHeader);
         }
     }
-}
-
-public class EventRollConfig
-{
-    public float HeaderVerticalPosition { get; set; } = 250f;
-
-    public float EventNameVerticalPosition { get; set; } = 205f;
 }

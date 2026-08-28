@@ -27,7 +27,11 @@ internal static class Program
         Run("roulette cleanup", RouletteCleanup);
         Run("event color fallback", EventColorFallback);
         Run("configured event metadata retrieval", ConfiguredEventMetadataRetrieval);
+        Run("default event display-name casing", DefaultEventDisplayNameCasing);
+        Run("custom event display-name casing is preserved", CustomEventDisplayNameCasingIsPreserved);
+        Run("roulette shares configured event color", RouletteSharesConfiguredEventColor);
         Run("roulette keeps preselected winner", RouletteKeepsPreselectedWinner);
+        Run("configurable roulette total duration", ConfigurableRouletteTotalDuration);
         Run("roulette staged pacing", RouletteStagedPacing);
         Run("roulette final result formatting", RouletteFinalResultFormatting);
         Run("roulette final-five cutoff", RouletteFinalFiveCutoff);
@@ -253,17 +257,119 @@ internal static class Program
             "Invalid configured metadata colors should resolve to white.");
     }
 
+    private static void DefaultEventDisplayNameCasing()
+    {
+        Assert(DefaultEventDisplayNames.Infection == "Infection", "Infection default casing changed unexpectedly.");
+        Assert(DefaultEventDisplayNames.JailbirdMayhem == "Jailbird mayhem",
+            "Jailbird mayhem should use normal sentence casing.");
+        Assert(DefaultEventDisplayNames.Escalation == "Escalation",
+            "Escalation default casing changed unexpectedly.");
+        Assert(DefaultEventDisplayNames.SpeedDemon == "Speed demon",
+            "Speed demon should use normal sentence casing.");
+        Assert(DefaultEventDisplayNames.TimeToGamble == "Time to gamble (development)",
+            "Time to gamble should use normal sentence casing.");
+        Assert(DefaultEventDisplayNames.Blackout == "Blackout event",
+            "Blackout event should use normal sentence casing.");
+    }
+
+    private static void CustomEventDisplayNameCasingIsPreserved()
+    {
+        EventDisplayConfig config = new()
+        {
+            Name = "Custom SCP Event NAME",
+            Color = "#123ABC",
+            Description = "Custom description."
+        };
+
+        EventDisplayMetadata metadata = EventDisplayMetadata.Resolve(config, "Fallback event");
+        string rouletteText = HintUiFormatter.FormatEventName(metadata.Name, metadata.Color);
+
+        Assert(metadata.Name == "Custom SCP Event NAME",
+            "Configured display-name capitalization must be preserved exactly.");
+        Assert(rouletteText.Contains("Custom SCP Event NAME"),
+            "Roulette formatting altered the configured display-name capitalization.");
+    }
+
+    private static void RouletteSharesConfiguredEventColor()
+    {
+        EventDisplayConfig config = new()
+        {
+            Name = "Configured event",
+            Color = "#12ab34",
+            Description = "Configured description."
+        };
+        EventDisplayMetadata metadata = EventDisplayMetadata.Resolve(config, "Fallback event");
+
+        string rouletteText = HintUiFormatter.FormatEventName(metadata.Name, metadata.Color);
+        BottomInfoContext context = new(metadata.Name, metadata.Description, metadata.Color);
+        EventDetailsProvider detailsProvider = new(true, 45f);
+
+        Assert(detailsProvider.TryGetContent(context, out BottomInfoContent details),
+            "Configured event details should be available.");
+        Assert(metadata.Color == "#12AB34" && rouletteText.Contains("<color=#12AB34>"),
+            "Roulette did not use the color resolved from shared event display metadata.");
+        Assert(details.Color == metadata.Color,
+            "Bottom event details did not use the same configured event color source as the roulette.");
+
+        foreach (System.Reflection.PropertyInfo property in typeof(EventRollConfig).GetProperties())
+        {
+            Assert(property.Name.IndexOf("Color", StringComparison.OrdinalIgnoreCase) < 0,
+                "EventRollConfig must not introduce a duplicate roulette-specific event color setting.");
+        }
+    }
+
     private static void RouletteKeepsPreselectedWinner()
     {
         const string PreselectedWinner = "Blackout Event";
         RouletteAnimationPlan<string> plan = RouletteAnimationPlan<string>.Create(
             PreselectedWinner,
             new[] { "Infection", "Escalation", PreselectedWinner, "Speed Demon" },
+            RouletteTiming.DefaultDurationSeconds,
             10f);
 
         Assert(plan.Frames.Count > 0, "The full roulette plan should contain rolling frames.");
         Assert(plan.SelectedWinner == PreselectedWinner,
             "Presentation planning must retain the already selected winner.");
+    }
+
+    private static void ConfigurableRouletteTotalDuration()
+    {
+        EventRollConfig config = new();
+        Assert(Math.Abs(config.TotalDurationSeconds - 4.05f) < 0.001f,
+            "The default total roulette duration should match the current 4.05-second presentation.");
+
+        RouletteAnimationPlan<string> shortPlan = RouletteAnimationPlan<string>.Create(
+            "Winner",
+            new[] { "A", "B", "Winner" },
+            2.25f,
+            20f);
+        RouletteAnimationPlan<string> defaultPlan = RouletteAnimationPlan<string>.Create(
+            "Winner",
+            new[] { "A", "B", "Winner" },
+            RouletteTiming.DefaultDurationSeconds,
+            20f);
+        RouletteAnimationPlan<string> doubledPlan = RouletteAnimationPlan<string>.Create(
+            "Winner",
+            new[] { "A", "B", "Winner" },
+            RouletteTiming.DefaultDurationSeconds * 2f,
+            20f);
+
+        Assert(Math.Abs(shortPlan.DurationSeconds - 2.25f) < 0.001f,
+            "A shorter configured roulette duration was not applied to the whole sequence.");
+        Assert(Math.Abs(doubledPlan.DurationSeconds - (RouletteTiming.DefaultDurationSeconds * 2f)) < 0.001f,
+            "A longer configured roulette duration was not applied to the whole sequence.");
+        Assert(defaultPlan.Frames.Count == doubledPlan.Frames.Count,
+            "Scaling the full roulette duration should retain the established pacing stages.");
+
+        for (int index = 0; index < defaultPlan.Frames.Count; index++)
+        {
+            Assert(defaultPlan.Frames[index].Delay.Stage == doubledPlan.Frames[index].Delay.Stage,
+                "Scaling changed a roulette pacing stage.");
+            Assert(Math.Abs(
+                    doubledPlan.Frames[index].Delay.Seconds -
+                    (defaultPlan.Frames[index].Delay.Seconds * 2f)) < 0.001f,
+                "Roulette stage delays were not scaled proportionally.");
+        }
     }
 
     private static void RouletteFinalResultFormatting()
@@ -282,6 +388,7 @@ internal static class Program
         RouletteAnimationPlan<string> plan = RouletteAnimationPlan<string>.Create(
             "Winner",
             new[] { "A", "B", "Winner" },
+            RouletteTiming.DefaultDurationSeconds,
             10f);
 
         RoulettePacingStage[] stages = new RoulettePacingStage[plan.Frames.Count];
@@ -307,24 +414,26 @@ internal static class Program
     private static void RouletteFinalFiveCutoff()
     {
         const float CountdownSeconds = 10.2f;
-        float available = CountdownSeconds -
-            RouletteTiming.FinalWindowSeconds -
-            RouletteTiming.CountdownSafetyMarginSeconds;
+        float available = RouletteTiming.GetAvailableAnimationSeconds(CountdownSeconds);
 
         RouletteAnimationPlan<string> plan = RouletteAnimationPlan<string>.Create(
             "Winner",
             new[] { "A", "B", "Winner" },
+            20f,
             available);
 
         Assert(plan.DurationSeconds <= available,
-            "The selected roulette schedule exceeds the time budget before the final five seconds.");
+            "The configured roulette duration was not clamped to the pre-round time budget.");
+        Assert(Math.Abs(plan.DurationSeconds - available) < 0.001f,
+            "The clamped roulette sequence should use the available presentation time.");
         Assert(!RouletteTiming.CanWaitBeforeCutoff(6.5f, 0.6f),
             "A rolling frame that could cross the protected final window must be rejected.");
 
         RouletteAnimationPlan<string> latePlan = RouletteAnimationPlan<string>.Create(
             "Winner",
             new[] { "A", "B", "Winner" },
-            0.5f);
+            RouletteTiming.DefaultDurationSeconds,
+            0.4f);
         Assert(latePlan.Frames.Count == 0,
             "A late-starting countdown should degrade directly to the preselected final result.");
     }
