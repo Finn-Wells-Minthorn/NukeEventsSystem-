@@ -6,6 +6,7 @@ using System;
 using MyFirstPlugin.Config;
 using MyFirstPlugin.Handlers;
 using MyFirstPlugin.Events;
+using MyFirstPlugin.Hints;
 
 namespace MyFirstPlugin;
 
@@ -29,6 +30,9 @@ public class MyFirstPlugin : Plugin<PluginConfig>
         new(LabApiProperties.CompiledVersion);
 
     private readonly RoundHandler _roundHandler = new();
+    private readonly HintManager _hintManager = new();
+
+    internal static HintManager? Hints => Instance?._hintManager;
 
     private void RegisterEvents()
     {
@@ -49,6 +53,7 @@ public class MyFirstPlugin : Plugin<PluginConfig>
             RegisterEvents();
             _roundHandler.Activate();
             CustomHandlersManager.RegisterEventsHandler(_roundHandler);
+            _hintManager.Enable();
         }
         catch
         {
@@ -82,17 +87,24 @@ public class MyFirstPlugin : Plugin<PluginConfig>
             {
                 try
                 {
-                    CustomHandlersManager.UnregisterEventsHandler(_roundHandler);
+                    _hintManager.Disable();
                 }
                 finally
                 {
                     try
                     {
-                        this.UnregisterCommands();
+                        CustomHandlersManager.UnregisterEventsHandler(_roundHandler);
                     }
                     finally
                     {
-                        Instance = null;
+                        try
+                        {
+                            this.UnregisterCommands();
+                        }
+                        finally
+                        {
+                            Instance = null;
+                        }
                     }
                 }
             }
