@@ -31,6 +31,8 @@ public sealed class EscalationEvent : EventBase
     public override string Description =>
         "SCPs begin empowered while the surviving humans progressively gain stronger advantages.";
 
+    public override string DisplayColor => _config.DisplayColor;
+
     protected override void OnStart()
     {
         _currentStage = 0;

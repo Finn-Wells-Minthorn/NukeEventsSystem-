@@ -10,6 +10,8 @@ public class PluginConfig
 
     public EventRollConfig EventRoll { get; set; } = new();
 
+    public BottomInfoConfig BottomInfo { get; set; } = new();
+
     public BlackoutEventConfig Blackout { get; set; } = new();
 
     public TimeToGambleEventConfig TimeToGamble { get; set; } = new();
@@ -25,6 +27,8 @@ public class PluginConfig
 
 public class InfectionEventConfig
 {
+    public string DisplayColor { get; set; } = "#66FF66";
+
     public bool Enabled { get; set; } = true;
 
     public int TwoDoctorMinimumPlayers { get; set; } = 15;
@@ -51,6 +55,8 @@ public class InfectionEventConfig
 
 public class JailbirdMayhemEventConfig
 {
+    public string DisplayColor { get; set; } = "#FFD166";
+
     public bool Enabled { get; set; } = true;
 
     public float SpawnProcessingDelaySeconds { get; set; } = 1f;
@@ -69,6 +75,8 @@ public class JailbirdMayhemEventConfig
 
 public class EscalationEventConfig
 {
+    public string DisplayColor { get; set; } = "#FF8C42";
+
     public float ScpMaxHealthMultiplier { get; set; } = 1.35f;
 
     public byte ScpDamageReductionIntensity { get; set; } = 30;
@@ -127,6 +135,8 @@ public class EscalationEventConfig
 
 public class SpeedDemonEventConfig
 {
+    public string DisplayColor { get; set; } = "#FF4D4D";
+
     public byte Intensity { get; set; } = 170;
 
     public byte ScpIntensity { get; set; } = 165;
@@ -140,6 +150,8 @@ public class SpeedDemonEventConfig
 
 public class TimeToGambleEventConfig
 {
+    public string DisplayColor { get; set; } = "#C77DFF";
+
     public MapGeneration.RoomName TargetRoomName { get; set; } = MapGeneration.RoomName.LczArmory;
 
     public int TargetWorkstationIndex { get; set; } = 0;
@@ -157,6 +169,8 @@ public class TimeToGambleEventConfig
 
 public class BlackoutEventConfig
 {
+    public string DisplayColor { get; set; } = "#6699FF";
+
     public float IntroStartDelaySeconds { get; set; } = 10f;
 
     public bool EnableFlickering { get; set; } = true;
@@ -226,4 +240,36 @@ public class BlackoutEventConfig
     public ushort PreBlackoutWarningDurationSeconds { get; set; } = 6;
 
     public ushort EndAnnouncementDurationSeconds { get; set; } = 5;
+}
+
+public class BottomInfoConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    public float VerticalPosition { get; set; } = 50f;
+
+    public float CycleIntervalSeconds { get; set; } = 45f;
+
+    public int FontSize { get; set; } = 18;
+
+    public string TextColor { get; set; } = "#D9F2FF";
+
+    public bool ShowServerInfo { get; set; } = true;
+
+    public string ServerInfoText { get; set; } = "NUKE EVENTS";
+
+    public string ServerInfoColor { get; set; } = "";
+
+    public bool ShowEventDetails { get; set; } = true;
+
+    public bool ShowTips { get; set; } = true;
+
+    public string TipColor { get; set; } = "#FFE6A3";
+
+    public List<string> Tips { get; set; } = new()
+    {
+        "Special events are selected before each round.",
+        "Adapt your strategy to the active event.",
+        "Work with your team and watch for event-specific changes."
+    };
 }

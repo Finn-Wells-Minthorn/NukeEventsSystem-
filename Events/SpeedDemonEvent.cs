@@ -27,6 +27,8 @@ public sealed class SpeedDemonEvent : EventBase
 
     public override string Description => "Everyone moves at extreme speed. Good luck.";
 
+    public override string DisplayColor => _config.DisplayColor;
+
     protected override void OnStart()
     {
         Server.SendBroadcast(

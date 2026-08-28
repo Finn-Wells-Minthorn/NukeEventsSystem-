@@ -11,5 +11,7 @@
     <Compile Include="..\..\Hints\HintElement.cs" Link="Hints\HintElement.cs" />
     <Compile Include="..\..\Hints\HintPlayerState.cs" Link="Hints\HintPlayerState.cs" />
     <Compile Include="..\..\Hints\HintComposer.cs" Link="Hints\HintComposer.cs" />
+    <Compile Include="..\..\Hints\HintUiFormatter.cs" Link="Hints\HintUiFormatter.cs" />
+    <Compile Include="..\..\Hints\BottomInfoCycle.cs" Link="Hints\BottomInfoCycle.cs" />
   </ItemGroup>
 </Project>

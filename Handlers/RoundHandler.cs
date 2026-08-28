@@ -1,17 +1,20 @@
 using System.Collections.Generic;
 using GameCore;
+using LabApi.Events.Arguments.PlayerEvents;
 using LabApi.Events.Arguments.ServerEvents;
 using LabApi.Events.CustomHandlers;
 using LabApi.Features.Console;
 using MEC;
 using MyFirstPlugin.Config;
 using MyFirstPlugin.Events;
+using MyFirstPlugin.Hints;
 
 namespace MyFirstPlugin.Handlers;
 
 public class RoundHandler : CustomEventsHandler
 {
     private readonly EventSelector _eventSelector = new();
+    private BottomInfoPresenter? _bottomInfoPresenter;
     private EventRollPresenter? _eventRollPresenter;
     private EventStartSequencePresenter? _eventStartSequencePresenter;
     private CoroutineHandle _countdownWatcherHandle;
@@ -25,9 +28,14 @@ public class RoundHandler : CustomEventsHandler
     private EventStartSequencePresenter EventStartSequencePresenter =>
         _eventStartSequencePresenter ??= new EventStartSequencePresenter();
 
+    private BottomInfoPresenter BottomInfoPresenter =>
+        _bottomInfoPresenter ??= new BottomInfoPresenter(
+            global::MyFirstPlugin.MyFirstPlugin.Instance?.Config?.BottomInfo ?? new BottomInfoConfig());
+
     public void Activate()
     {
         CancelPendingSelection();
+        _bottomInfoPresenter?.Stop();
         EventManager.EventStarting -= OnEventStarting;
         EventManager.EventStarting += OnEventStarting;
         _isActive = true;
@@ -38,6 +46,7 @@ public class RoundHandler : CustomEventsHandler
         _isActive = false;
         EventManager.EventStarting -= OnEventStarting;
         CancelPendingSelection();
+        _bottomInfoPresenter?.Stop();
     }
 
     private void CancelPendingSelection()
@@ -70,6 +79,7 @@ public class RoundHandler : CustomEventsHandler
             return;
 
         Logger.Info("[SCPEventSystem] Waiting for players.");
+        _bottomInfoPresenter?.Stop();
         CancelPendingSelection();
         _countdownWatcherHandle = Timing.RunCoroutine(WatchForCountdown());
     }
@@ -134,22 +144,24 @@ public class RoundHandler : CustomEventsHandler
             return selectedEvent;
         }
 
-        EventStartSequencePresenter.Start(() =>
-        {
-            if (!_isActive || _pendingEvent != selectedEvent || EventManager.CurrentEvent != null)
-                return;
+        EventStartSequencePresenter.Start(
+            EventRollPresenter.ShowHeader,
+            () =>
+            {
+                if (!_isActive || _pendingEvent != selectedEvent || EventManager.CurrentEvent != null)
+                    return;
 
-            EventRollPresenter.Start(
-                selectedEvent,
-                enabledEvents,
-                presentedEvent =>
-                {
-                    if (!_isActive || _pendingEvent != presentedEvent || EventManager.CurrentEvent != null)
-                        return;
+                EventRollPresenter.Start(
+                    selectedEvent,
+                    enabledEvents,
+                    presentedEvent =>
+                    {
+                        if (!_isActive || _pendingEvent != presentedEvent || EventManager.CurrentEvent != null)
+                            return;
 
-                    Logger.Info($"[SCPEventSystem] Event roll completed: {presentedEvent.Name}");
-                });
-        });
+                        Logger.Info($"[SCPEventSystem] Event roll completed: {presentedEvent.Name}");
+                    });
+            });
 
         return selectedEvent;
     }
@@ -182,6 +194,7 @@ public class RoundHandler : CustomEventsHandler
         CancelCountdownWatcher();
         _eventStartSequencePresenter?.Cancel();
         _eventRollPresenter?.Cancel();
+        BottomInfoPresenter.Start();
 
         if (!global::MyFirstPlugin.MyFirstPlugin.AutomaticEventsEnabled)
         {
@@ -219,6 +232,7 @@ public class RoundHandler : CustomEventsHandler
     public override void OnServerRoundEnded(RoundEndedEventArgs ev)
     {
         Logger.Info("[SCPEventSystem] Round ended.");
+        _bottomInfoPresenter?.Stop();
         CancelPendingSelection();
         EventManager.StopCurrentEvent();
     }
@@ -226,7 +240,17 @@ public class RoundHandler : CustomEventsHandler
     public override void OnServerRoundRestarted()
     {
         Logger.Info("[SCPEventSystem] Round restarting.");
+        _bottomInfoPresenter?.Stop();
         CancelPendingSelection();
         EventManager.StopCurrentEvent();
+    }
+
+    public override void OnPlayerJoined(PlayerJoinedEventArgs ev)
+    {
+        if (!_isActive)
+            return;
+
+        _eventRollPresenter?.ShowCurrent(ev.Player);
+        _bottomInfoPresenter?.ShowCurrent(ev.Player);
     }
 }

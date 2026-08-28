@@ -6,6 +6,7 @@ namespace MyFirstPlugin.Tests;
 internal static class Program
 {
     private static int _passed;
+    private static int _run;
 
     private static int Main()
     {
@@ -19,13 +20,22 @@ internal static class Program
         Run("stale callback generation", StaleCallbackGeneration);
         Run("duplicate external hint detection", DuplicateExternalHintDetection);
         Run("composer positioning and formatting", ComposerPositioningAndFormatting);
+        Run("roulette stable tagged replacement", RouletteStableTaggedReplacement);
+        Run("roulette cleanup", RouletteCleanup);
+        Run("event color fallback", EventColorFallback);
+        Run("bottom cycle ordering", BottomCycleOrdering);
+        Run("bottom cycle skips unavailable event", BottomCycleSkipsUnavailableEvent);
+        Run("tip rotation", TipRotation);
+        Run("bottom cycle lifecycle protection", BottomCycleLifecycleProtection);
 
-        Console.WriteLine($"Hint framework tests passed: {_passed}/10");
+        Console.WriteLine($"Hint framework tests passed: {_passed}/{_run}");
         return 0;
     }
 
     private static void Run(string name, Action test)
     {
+        ++_run;
+
         try
         {
             test();
@@ -151,6 +161,108 @@ internal static class Program
         Assert(content.Contains("<align=center>"), "Center alignment was not emitted.");
         Assert(content.Contains("<color=red><size=24>"), "Supported rich text was not preserved.");
         Assert(content.Contains("<line-height="), "A stable vertical line-height was not emitted.");
+    }
+
+    private static void RouletteStableTaggedReplacement()
+    {
+        HintPlayerState state = new();
+        state.Set(Element(HintElementId.LobbyEventHeader, "Selecting Event...", 250f));
+        state.Set(Element(HintElementId.LobbyEventName, "BLACKOUT", 205f));
+
+        Assert(state.Set(Element(HintElementId.LobbyEventName, "ESCALATION", 205f)),
+            "Changing the rolling event must request a render.");
+
+        string content = HintComposer.Compose(state.Elements);
+        Assert(state.ElementCount == 2, "Roulette updates must retain exactly two stable elements.");
+        Assert(content.Contains("Selecting Event...") && content.Contains("ESCALATION"),
+            "The header and latest event should coexist.");
+        Assert(!content.Contains("BLACKOUT"), "The prior rolling event was not replaced.");
+    }
+
+    private static void RouletteCleanup()
+    {
+        HintPlayerState state = new();
+        state.Set(Element(HintElementId.LobbyEventHeader, "Selecting Event...", 250f));
+        state.Set(Element(HintElementId.LobbyEventName, "BLACKOUT", 205f));
+
+        Assert(state.Remove(HintElementId.LobbyEventName), "The roulette event element should be removable.");
+        Assert(state.Remove(HintElementId.LobbyEventHeader), "The roulette header should be removable.");
+        Assert(state.ElementCount == 0, "Round-start cleanup should leave no roulette elements.");
+    }
+
+    private static void EventColorFallback()
+    {
+        string fallback = HintUiFormatter.FormatEventName("BLACKOUT", null);
+        string configured = HintUiFormatter.FormatEventName("ESCALATION", "#FF8C42");
+
+        Assert(fallback.Contains($"<color={HintUiFormatter.DefaultEventColor}>"),
+            "Events without a configured color should use the readable default.");
+        Assert(configured.Contains("<color=#FF8C42>"), "Configured event colors should be preserved.");
+    }
+
+    private static void BottomCycleOrdering()
+    {
+        BottomInfoCycle cycle = CreateBottomCycle(new[] { "First tip", "Second tip" });
+        BottomInfoContext context = new("Blackout Event", "Facility lights are disabled.", "#6699FF");
+
+        AssertNext(cycle, context, "NUKE EVENTS");
+        AssertNext(cycle, context, "Blackout Event: Facility lights are disabled.");
+        AssertNext(cycle, context, "TIP: First tip");
+        AssertNext(cycle, context, "NUKE EVENTS");
+    }
+
+    private static void BottomCycleSkipsUnavailableEvent()
+    {
+        BottomInfoCycle cycle = CreateBottomCycle(new[] { "Only tip" });
+        BottomInfoContext noEvent = default;
+
+        AssertNext(cycle, noEvent, "NUKE EVENTS");
+        AssertNext(cycle, noEvent, "TIP: Only tip");
+        AssertNext(cycle, noEvent, "NUKE EVENTS");
+    }
+
+    private static void TipRotation()
+    {
+        BottomInfoCycle cycle = CreateBottomCycle(new[] { "First tip", "Second tip" });
+        BottomInfoContext noEvent = default;
+
+        AssertNext(cycle, noEvent, "NUKE EVENTS");
+        AssertNext(cycle, noEvent, "TIP: First tip");
+        AssertNext(cycle, noEvent, "NUKE EVENTS");
+        AssertNext(cycle, noEvent, "TIP: Second tip");
+        AssertNext(cycle, noEvent, "NUKE EVENTS");
+        AssertNext(cycle, noEvent, "TIP: First tip");
+    }
+
+    private static void BottomCycleLifecycleProtection()
+    {
+        BottomInfoLoopState state = new();
+        Assert(state.TryStart(out int firstGeneration), "The first cycle loop should start.");
+        Assert(!state.TryStart(out int duplicateGeneration), "A duplicate cycle loop must be rejected.");
+        Assert(firstGeneration == duplicateGeneration, "Duplicate start should retain the active generation.");
+
+        state.Stop();
+        Assert(!state.IsCurrent(firstGeneration), "Stopping must invalidate stale callbacks.");
+        Assert(state.TryStart(out int secondGeneration), "The cycle should start cleanly next round.");
+        Assert(secondGeneration != firstGeneration, "A restarted cycle requires a fresh generation.");
+    }
+
+    private static BottomInfoCycle CreateBottomCycle(string[] tips)
+    {
+        BottomInfoCycle cycle = new(new IBottomInfoProvider[]
+        {
+            new ServerInfoProvider(true, "NUKE EVENTS", null),
+            new EventDetailsProvider(true),
+            new TipProvider(true, tips, null)
+        });
+        cycle.Reset();
+        return cycle;
+    }
+
+    private static void AssertNext(BottomInfoCycle cycle, BottomInfoContext context, string expected)
+    {
+        Assert(cycle.TryGetNext(context, out BottomInfoContent content), "Expected another bottom-cycle entry.");
+        Assert(content.Text == expected, $"Expected '{expected}' but received '{content.Text}'.");
     }
 
     private static HintElement Element(HintElementId id, string content, float position) =>

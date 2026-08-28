@@ -41,6 +41,8 @@ public sealed class JailbirdMayhemEvent : EventBase
     public override string Description =>
         "Playable humans keep their utility loadouts but replace spawn firearms and ammunition with Jailbirds.";
 
+    public override string DisplayColor => _config.DisplayColor;
+
     protected override void OnStart()
     {
         Subscribe();

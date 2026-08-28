@@ -24,6 +24,8 @@ public class TimeToGambleEvent : EventBase
     public override string Description =>
         "A modular event that strips starting equipment from human players and detects interaction with one existing workstation.";
 
+    public override string DisplayColor => _config.DisplayColor;
+
     protected override void OnStart()
     {
         Server.SendBroadcast(

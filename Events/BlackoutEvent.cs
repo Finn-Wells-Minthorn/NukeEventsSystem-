@@ -54,6 +54,8 @@ public class BlackoutEvent : EventBase
     public override string Description =>
         "A round-long facility blackout with a delayed cinematic intro and randomized dark and powered periods.";
 
+    public override string DisplayColor => _config.DisplayColor;
+
     protected override void OnStart()
     {
         _cleanupCompleted = false;

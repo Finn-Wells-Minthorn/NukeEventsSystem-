@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using MEC;
-using LabApi.Features.Wrappers;
 
 namespace MyFirstPlugin.Events;
 
@@ -13,8 +12,11 @@ public sealed class EventStartSequencePresenter
 
     public bool IsRunning => _isRunning && _sequenceHandle.IsValid;
 
-    public void Start(Action onCompleted)
+    public void Start(Action onStarted, Action onCompleted)
     {
+        if (onStarted == null)
+            throw new ArgumentNullException(nameof(onStarted));
+
         if (onCompleted == null)
             throw new ArgumentNullException(nameof(onCompleted));
 
@@ -22,6 +24,7 @@ public sealed class EventStartSequencePresenter
 
         _isCancelled = false;
         _isRunning = true;
+        onStarted();
         _sequenceHandle = Timing.RunCoroutine(RunSequence(onCompleted));
     }
 
@@ -43,22 +46,19 @@ public sealed class EventStartSequencePresenter
             if (_isCancelled)
                 yield break;
 
-            Server.SendBroadcast("SPECIAL EVENT", 2);
             yield return Timing.WaitForSeconds(0.6f);
 
-            foreach (int count in new[] { 3, 2, 1 })
+            for (int count = 3; count >= 1; count--)
             {
                 if (_isCancelled)
                     yield break;
 
-                Server.SendBroadcast(count.ToString(), 1);
                 yield return Timing.WaitForSeconds(0.6f);
             }
 
             if (_isCancelled)
                 yield break;
 
-            Server.SendBroadcast("EVENT SELECTING...", 2);
             yield return Timing.WaitForSeconds(0.35f);
 
             if (_isCancelled)
