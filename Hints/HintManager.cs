@@ -21,10 +21,6 @@ internal sealed class HintManager : CustomEventsHandler
     private const float EmptyHintDurationSeconds = 0.1f;
     private const float MinimumExternalHintDurationSeconds = 0.05f;
     private const float ExternalHintRestorePaddingSeconds = 0.15f;
-    private const float AlphaEffectSettleDelaySeconds = 0.5f;
-
-    private static readonly FieldInfo? HintEffectsField =
-        AccessTools.Field(typeof(Hint), "_effects");
 
     // Native hints can leave the client's shared hint alpha at zero when their
     // fade effect ends. RueI resets it with a constant curve on every owned
@@ -161,20 +157,6 @@ internal sealed class HintManager : CustomEventsHandler
         Render(player, state, force: true);
     }
 
-    internal string GetDiagnosticStatus(Player player)
-    {
-        uint networkId = player.NetworkId;
-        if (!_states.TryGet(networkId, out HintPlayerState state))
-            return "No Nuke Events hint state is tracked for this player.";
-
-        bool hasPendingRestore = _pendingRestores.TryGetValue(networkId, out PendingRestore pending);
-        bool pendingHandleValid = hasPendingRestore && pending.Handle.IsValid;
-
-        return $"Hint state: elements={state.ElementCount}, externalActive={state.IsExternalHintActive}, " +
-               $"externalGeneration={state.ExternalHintGeneration}, pendingRestore={hasPendingRestore}, " +
-               $"pendingHandleValid={pendingHandleValid}, ownedVisible={state.IsOwnedHintVisible}.";
-    }
-
     internal void OnHintShown(Player player, Hint hint)
     {
         if (!_enabled || _ownedSendDepth > 0 || !CanReceiveHints(player))
@@ -198,16 +180,11 @@ internal sealed class HintManager : CustomEventsHandler
         float safeDuration = float.IsNaN(durationSeconds) || durationSeconds < MinimumExternalHintDurationSeconds
             ? MinimumExternalHintDurationSeconds
             : durationSeconds;
-        float alphaSettleDelay = HasAlphaCurveEffect(hint)
-            ? AlphaEffectSettleDelaySeconds
-            : 0f;
 
         // Restoring at the exact advertised duration can race the client's
         // final expiry/clear frame and erase the replacement hint immediately.
-        // Alpha-curve hints need an additional settling window because their
-        // final client-side alpha update can occur after DurationScalar.
         CoroutineHandle handle = Timing.CallDelayed(
-            safeDuration + ExternalHintRestorePaddingSeconds + alphaSettleDelay,
+            safeDuration + ExternalHintRestorePaddingSeconds,
             () => RestoreAfterExternalHint(networkId, state, generation));
 
         _pendingRestores[networkId] = new PendingRestore(state, generation, handle);
@@ -330,10 +307,6 @@ internal sealed class HintManager : CustomEventsHandler
         Render(player!, currentState, force: true);
     }
 
-    private static bool HasAlphaCurveEffect(Hint hint) =>
-        HintEffectsField?.GetValue(hint) is HintEffect[] effects &&
-        effects.Any(effect => effect is AlphaCurveHintEffect);
-
     private void RemovePlayerState(uint networkId, Player? player, bool sendClear)
     {
         CancelPendingRestore(networkId);
@@ -401,12 +374,6 @@ internal sealed class HintManager : CustomEventsHandler
 
     private void VerifyPatchInstalled()
     {
-        if (HintEffectsField == null)
-        {
-            throw new InvalidOperationException(
-                "The native hint alpha-effect field could not be resolved.");
-        }
-
         MethodInfo? target = AccessTools.Method(typeof(HintDisplay), nameof(HintDisplay.Show));
         Patches? patchInfo = target == null ? null : Harmony.GetPatchInfo(target);
 

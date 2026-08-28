@@ -49,8 +49,12 @@ internal static class Program
     private static void ReplaceSameTag()
     {
         HintPlayerState state = new();
-        state.Set(Element(HintElementId.LobbyEventName, "BLACKOUT", 740f));
-        state.Set(Element(HintElementId.LobbyEventName, "ESCALATION", 740f));
+        Assert(state.Set(Element(HintElementId.LobbyEventName, "BLACKOUT", 740f)),
+            "The initial tagged element should change state.");
+        Assert(state.Set(Element(HintElementId.LobbyEventName, "ESCALATION", 740f)),
+            "Changed content must request a fresh render.");
+        Assert(!state.Set(Element(HintElementId.LobbyEventName, "ESCALATION", 740f)),
+            "Identical content should not request an unnecessary render.");
 
         string content = HintComposer.Compose(state.Elements);
         Assert(state.ElementCount == 1, "Replacement must not add another slot.");
