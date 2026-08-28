@@ -42,10 +42,7 @@ public sealed class InfectionEvent : EventBase
 
     public override string Name => "Infection";
 
-    public override string Description =>
-        "Plague Doctors lead an SCP-049-2 horde whose kills convert human survivors into new zombies.";
-
-    public override string DisplayColor => _config.DisplayColor;
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {

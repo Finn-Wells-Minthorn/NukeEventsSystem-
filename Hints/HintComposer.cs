@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -23,25 +24,36 @@ internal static class HintComposer
         if (orderedElements.Count == 0)
             return string.Empty;
 
-        StringBuilder builder = new("<line-height=0>");
-        float previousBaseline = 0f;
+        float[] baselines = orderedElements
+            .Select(element => ToBaseline(element.VerticalPosition))
+            .ToArray();
+        float[] lineAdvances = new float[Math.Max(0, orderedElements.Count - 1)];
+        float initialOffset = baselines[0];
+
+        for (int index = 1; index < orderedElements.Count; index++)
+        {
+            float lineAdvance = (baselines[index - 1] - baselines[index]) / -2f;
+            lineAdvances[index - 1] = lineAdvance;
+            initialOffset += lineAdvance;
+        }
+
+        // Hint text is vertically centered as one native TMP block. Prepending
+        // the cumulative offset compensates for every following element, so a
+        // lower element cannot push an earlier element away from its position.
+        StringBuilder builder = new();
+        AppendLineAdvance(builder, initialOffset);
 
         for (int index = 0; index < orderedElements.Count; index++)
         {
-            HintElement element = orderedElements[index];
-            float baseline = ToBaseline(element.VerticalPosition);
-            float lineHeight = index == 0
-                ? baseline
-                : (previousBaseline - baseline) / -2f;
+            if (index > 0)
+                AppendLineAdvance(builder, lineAdvances[index - 1]);
 
-            AppendLineAdvance(builder, lineHeight);
+            HintElement element = orderedElements[index];
             builder.Append("<align=")
                 .Append(ToAlignmentValue(element.Alignment))
                 .Append('>')
                 .Append(element.Content)
                 .Append("</align>");
-
-            previousBaseline = baseline;
         }
 
         // The invisible trailing glyph makes the client apply a final line break

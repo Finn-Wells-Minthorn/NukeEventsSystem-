@@ -38,10 +38,7 @@ public sealed class JailbirdMayhemEvent : EventBase
 
     public override string Name => "Jailbird Mayhem";
 
-    public override string Description =>
-        "Playable humans keep their utility loadouts but replace spawn firearms and ammunition with Jailbirds.";
-
-    public override string DisplayColor => _config.DisplayColor;
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {

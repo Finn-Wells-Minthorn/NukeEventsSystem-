@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MyFirstPlugin.Hints;
+using MyFirstPlugin.Config;
 
 namespace MyFirstPlugin.Events;
 
@@ -12,11 +12,18 @@ public abstract class EventBase
 
     public abstract string Name { get; }
 
-    public abstract string Description { get; }
+    protected virtual EventDisplayConfig? DisplayConfig => null;
 
-    public virtual string DisplayColor => HintUiFormatter.DefaultEventColor;
+    private EventDisplayMetadata DisplayMetadata =>
+        EventDisplayMetadata.Resolve(DisplayConfig, Name);
 
-    public virtual string DisplayDescription => Description;
+    public virtual string DisplayName => DisplayMetadata.Name;
+
+    public virtual string Description => DisplayMetadata.Description;
+
+    public virtual string DisplayColor => DisplayMetadata.Color;
+
+    public virtual string DisplayDescription => DisplayMetadata.Description;
 
     public bool IsEnabled { get; private set; } = true;
 

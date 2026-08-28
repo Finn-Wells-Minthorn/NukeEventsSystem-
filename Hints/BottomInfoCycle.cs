@@ -25,15 +25,18 @@ internal readonly struct BottomInfoContext
 
 internal readonly struct BottomInfoContent
 {
-    public BottomInfoContent(string text, string? color = null)
+    public BottomInfoContent(string text, string? color, float durationSeconds)
     {
         Text = text;
         Color = color;
+        DurationSeconds = durationSeconds;
     }
 
     public string Text { get; }
 
     public string? Color { get; }
+
+    public float DurationSeconds { get; }
 }
 
 internal interface IBottomInfoProvider
@@ -85,12 +88,14 @@ internal sealed class ServerInfoProvider : IBottomInfoProvider
     private readonly bool _enabled;
     private readonly string _text;
     private readonly string? _color;
+    private readonly float _durationSeconds;
 
-    public ServerInfoProvider(bool enabled, string text, string? color)
+    public ServerInfoProvider(bool enabled, string text, string? color, float durationSeconds)
     {
         _enabled = enabled;
         _text = text;
         _color = color;
+        _durationSeconds = durationSeconds;
     }
 
     public void Reset()
@@ -99,7 +104,7 @@ internal sealed class ServerInfoProvider : IBottomInfoProvider
 
     public bool TryGetContent(BottomInfoContext context, out BottomInfoContent content)
     {
-        content = new BottomInfoContent(_text, _color);
+        content = new BottomInfoContent(_text, _color, _durationSeconds);
         return _enabled && !string.IsNullOrWhiteSpace(_text);
     }
 }
@@ -107,10 +112,12 @@ internal sealed class ServerInfoProvider : IBottomInfoProvider
 internal sealed class EventDetailsProvider : IBottomInfoProvider
 {
     private readonly bool _enabled;
+    private readonly float _durationSeconds;
 
-    public EventDetailsProvider(bool enabled)
+    public EventDetailsProvider(bool enabled, float durationSeconds)
     {
         _enabled = enabled;
+        _durationSeconds = durationSeconds;
     }
 
     public void Reset()
@@ -125,7 +132,8 @@ internal sealed class EventDetailsProvider : IBottomInfoProvider
 
         content = new BottomInfoContent(
             $"{context.EventName}: {context.EventDescription}",
-            context.EventColor);
+            context.EventColor,
+            _durationSeconds);
         return true;
     }
 }
@@ -135,9 +143,10 @@ internal sealed class TipProvider : IBottomInfoProvider
     private readonly bool _enabled;
     private readonly IReadOnlyList<string> _tips;
     private readonly string? _color;
+    private readonly float _durationSeconds;
     private int _nextTipIndex;
 
-    public TipProvider(bool enabled, IEnumerable<string>? tips, string? color)
+    public TipProvider(bool enabled, IEnumerable<string>? tips, string? color, float durationSeconds)
     {
         _enabled = enabled;
         _tips = tips?
@@ -145,6 +154,7 @@ internal sealed class TipProvider : IBottomInfoProvider
             .Select(tip => tip.Trim())
             .ToList() ?? new List<string>();
         _color = color;
+        _durationSeconds = durationSeconds;
     }
 
     public void Reset()
@@ -160,7 +170,7 @@ internal sealed class TipProvider : IBottomInfoProvider
 
         string tip = _tips[_nextTipIndex];
         _nextTipIndex = (_nextTipIndex + 1) % _tips.Count;
-        content = new BottomInfoContent($"TIP: {tip}", _color);
+        content = new BottomInfoContent($"TIP: {tip}", _color, _durationSeconds);
         return true;
     }
 }

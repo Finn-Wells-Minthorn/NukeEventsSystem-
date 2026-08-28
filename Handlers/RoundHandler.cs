@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using GameCore;
 using LabApi.Events.Arguments.PlayerEvents;
@@ -16,7 +17,6 @@ public class RoundHandler : CustomEventsHandler
     private readonly EventSelector _eventSelector = new();
     private BottomInfoPresenter? _bottomInfoPresenter;
     private EventRollPresenter? _eventRollPresenter;
-    private EventStartSequencePresenter? _eventStartSequencePresenter;
     private CoroutineHandle _countdownWatcherHandle;
     private EventBase? _pendingEvent;
     private bool _isActive;
@@ -24,9 +24,6 @@ public class RoundHandler : CustomEventsHandler
     private EventRollPresenter EventRollPresenter =>
         _eventRollPresenter ??= new EventRollPresenter(
             global::MyFirstPlugin.MyFirstPlugin.Instance?.Config?.EventRoll ?? new EventRollConfig());
-
-    private EventStartSequencePresenter EventStartSequencePresenter =>
-        _eventStartSequencePresenter ??= new EventStartSequencePresenter();
 
     private BottomInfoPresenter BottomInfoPresenter =>
         _bottomInfoPresenter ??= new BottomInfoPresenter(
@@ -52,7 +49,6 @@ public class RoundHandler : CustomEventsHandler
     private void CancelPendingSelection()
     {
         CancelCountdownWatcher();
-        _eventStartSequencePresenter?.Cancel();
         _eventRollPresenter?.Cancel();
         _pendingEvent = null;
     }
@@ -144,23 +140,17 @@ public class RoundHandler : CustomEventsHandler
             return selectedEvent;
         }
 
-        EventStartSequencePresenter.Start(
-            EventRollPresenter.ShowHeader,
-            () =>
+        EventRollPresenter.ShowHeader();
+        EventRollPresenter.Start(
+            selectedEvent,
+            enabledEvents,
+            GetRemainingPreRoundSeconds,
+            presentedEvent =>
             {
-                if (!_isActive || _pendingEvent != selectedEvent || EventManager.CurrentEvent != null)
+                if (!_isActive || _pendingEvent != presentedEvent || EventManager.CurrentEvent != null)
                     return;
 
-                EventRollPresenter.Start(
-                    selectedEvent,
-                    enabledEvents,
-                    presentedEvent =>
-                    {
-                        if (!_isActive || _pendingEvent != presentedEvent || EventManager.CurrentEvent != null)
-                            return;
-
-                        Logger.Info($"[SCPEventSystem] Event roll completed: {presentedEvent.Name}");
-                    });
+                Logger.Info($"[SCPEventSystem] Event roll completed: {presentedEvent.Name}");
             });
 
         return selectedEvent;
@@ -192,7 +182,6 @@ public class RoundHandler : CustomEventsHandler
         Logger.Info("[SCPEventSystem] Round started.");
 
         CancelCountdownWatcher();
-        _eventStartSequencePresenter?.Cancel();
         _eventRollPresenter?.Cancel();
         BottomInfoPresenter.Start();
 
@@ -252,5 +241,11 @@ public class RoundHandler : CustomEventsHandler
 
         _eventRollPresenter?.ShowCurrent(ev.Player);
         _bottomInfoPresenter?.ShowCurrent(ev.Player);
+    }
+
+    private static float GetRemainingPreRoundSeconds()
+    {
+        RoundStart? roundStart = RoundStart.singleton;
+        return roundStart == null ? 0f : Math.Max(0f, roundStart.Timer);
     }
 }

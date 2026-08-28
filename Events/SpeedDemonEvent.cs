@@ -25,9 +25,7 @@ public sealed class SpeedDemonEvent : EventBase
 
     public override string Name => "Speed Demon";
 
-    public override string Description => "Everyone moves at extreme speed. Good luck.";
-
-    public override string DisplayColor => _config.DisplayColor;
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {

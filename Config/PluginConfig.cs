@@ -27,7 +27,13 @@ public class PluginConfig
 
 public class InfectionEventConfig
 {
-    public string DisplayColor { get; set; } = "#66FF66";
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = "Infection",
+        Color = "#66FF66",
+        Description =
+            "Plague Doctors lead an SCP-049-2 horde whose kills convert human survivors into new zombies."
+    };
 
     public bool Enabled { get; set; } = true;
 
@@ -55,7 +61,13 @@ public class InfectionEventConfig
 
 public class JailbirdMayhemEventConfig
 {
-    public string DisplayColor { get; set; } = "#FFD166";
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = "Jailbird Mayhem",
+        Color = "#FFD166",
+        Description =
+            "Playable humans keep their utility loadouts but replace spawn firearms and ammunition with Jailbirds."
+    };
 
     public bool Enabled { get; set; } = true;
 
@@ -75,7 +87,13 @@ public class JailbirdMayhemEventConfig
 
 public class EscalationEventConfig
 {
-    public string DisplayColor { get; set; } = "#FF8C42";
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = "Escalation",
+        Color = "#FF8C42",
+        Description =
+            "SCPs begin empowered while the surviving humans progressively gain stronger advantages."
+    };
 
     public float ScpMaxHealthMultiplier { get; set; } = 1.35f;
 
@@ -135,7 +153,12 @@ public class EscalationEventConfig
 
 public class SpeedDemonEventConfig
 {
-    public string DisplayColor { get; set; } = "#FF4D4D";
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = "Speed Demon",
+        Color = "#FF4D4D",
+        Description = "Everyone moves at extreme speed. Good luck."
+    };
 
     public byte Intensity { get; set; } = 170;
 
@@ -150,7 +173,13 @@ public class SpeedDemonEventConfig
 
 public class TimeToGambleEventConfig
 {
-    public string DisplayColor { get; set; } = "#C77DFF";
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = "Time To Gamble (Development)",
+        Color = "#C77DFF",
+        Description =
+            "A modular event that strips starting equipment from human players and detects interaction with one existing workstation."
+    };
 
     public MapGeneration.RoomName TargetRoomName { get; set; } = MapGeneration.RoomName.LczArmory;
 
@@ -169,7 +198,13 @@ public class TimeToGambleEventConfig
 
 public class BlackoutEventConfig
 {
-    public string DisplayColor { get; set; } = "#6699FF";
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = "Blackout Event",
+        Color = "#6699FF",
+        Description =
+            "A round-long facility blackout with a delayed cinematic intro and randomized dark and powered periods."
+    };
 
     public float IntroStartDelaySeconds { get; set; } = 10f;
 
@@ -248,8 +283,6 @@ public class BottomInfoConfig
 
     public float VerticalPosition { get; set; } = 50f;
 
-    public float CycleIntervalSeconds { get; set; } = 45f;
-
     public int FontSize { get; set; } = 18;
 
     public string TextColor { get; set; } = "#D9F2FF";
@@ -260,11 +293,17 @@ public class BottomInfoConfig
 
     public string ServerInfoColor { get; set; } = "";
 
+    public float ServerInfoDurationSeconds { get; set; } = 60f;
+
     public bool ShowEventDetails { get; set; } = true;
 
-    public bool ShowTips { get; set; } = true;
+    public float EventDetailsDurationSeconds { get; set; } = 45f;
+
+    public bool TipsEnabled { get; set; } = true;
 
     public string TipColor { get; set; } = "#FFE6A3";
+
+    public float TipDurationSeconds { get; set; } = 45f;
 
     public List<string> Tips { get; set; } = new()
     {
