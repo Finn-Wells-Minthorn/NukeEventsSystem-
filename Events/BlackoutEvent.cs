@@ -47,6 +47,9 @@ public class BlackoutEvent : EventBase
     public BlackoutEvent(BlackoutEventConfig? config)
     {
         _config = config ?? new BlackoutEventConfig();
+
+        if (!_config.Enabled)
+            Disable();
     }
 
     public override string Name => "Blackout Event";
@@ -321,15 +324,38 @@ public class BlackoutEvent : EventBase
 
     private int GetRandomBlackoutDurationSeconds()
     {
-        int shortMin = Math.Max(1, _config.ShortBlackoutMinSeconds);
-        int shortMax = Math.Max(shortMin, _config.ShortBlackoutMaxSeconds);
-        int longMin = Math.Max(1, _config.LongBlackoutMinSeconds);
-        int longMax = Math.Max(longMin, _config.LongBlackoutMaxSeconds);
+        ResolvePositiveRange(
+            _config.ShortBlackoutMinSeconds,
+            _config.ShortBlackoutMaxSeconds,
+            out int shortMin,
+            out int shortMax);
+        ResolvePositiveRange(
+            _config.LongBlackoutMinSeconds,
+            _config.LongBlackoutMaxSeconds,
+            out int longMin,
+            out int longMax);
 
         if (RollChance(_config.ShortBlackoutChance))
             return GetRandomInclusive(shortMin, shortMax);
 
         return GetRandomInclusive(longMin, longMax);
+    }
+
+    private static void ResolvePositiveRange(
+        int configuredMin,
+        int configuredMax,
+        out int min,
+        out int max)
+    {
+        min = Math.Max(1, configuredMin);
+        max = Math.Max(1, configuredMax);
+
+        if (min <= max)
+            return;
+
+        int originalMin = min;
+        min = max;
+        max = originalMin;
     }
 
     private int GetRandomInclusive(int min, int max)

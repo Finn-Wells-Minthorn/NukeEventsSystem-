@@ -16,7 +16,9 @@ public class TimeToGambleEvent : EventBase
     public TimeToGambleEvent(TimeToGambleEventConfig? config = null)
     {
         _config = config ?? new TimeToGambleEventConfig();
-        Disable();
+
+        if (!_config.Enabled)
+            Disable();
     }
 
     public override string Name => "Time To Gamble (Development)";
@@ -38,13 +40,14 @@ public class TimeToGambleEvent : EventBase
             return;
         }
 
+        int targetWorkstationIndex = Math.Max(0, _config.TargetWorkstationIndex);
         Workstation? targetWorkstation = Workstation.List
             .Where(workstation => workstation.Room != null && workstation.Room.Name == _config.TargetRoomName)
-            .ElementAtOrDefault(_config.TargetWorkstationIndex);
+            .ElementAtOrDefault(targetWorkstationIndex);
 
         if (targetWorkstation == null)
         {
-            Console.WriteLine($"[SCPEventSystem] No existing workstation found in room '{targetRoom.Name}' at configured index {_config.TargetWorkstationIndex}.");
+            Console.WriteLine($"[SCPEventSystem] No existing workstation found in room '{targetRoom.Name}' at resolved index {targetWorkstationIndex}.");
             return;
         }
 
@@ -58,7 +61,7 @@ public class TimeToGambleEvent : EventBase
         _machineManager.Subscribe();
         Console.WriteLine(
             $"[SCPEventSystem] Time To Gamble attached configured workstation: " +
-            $"room='{targetRoom.Name}', index='{_config.TargetWorkstationIndex}'."
+            $"room='{targetRoom.Name}', index='{targetWorkstationIndex}'."
         );
 
         foreach (Player player in Player.List)
