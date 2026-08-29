@@ -201,8 +201,14 @@ internal sealed class HintManager : CustomEventsHandler
 
     public override void OnServerShutdown() => ClearAllCore(sendClear: true);
 
-    private static bool CanReceiveHints(Player? player) =>
-        player != null && !player.IsDestroyed && !player.IsHost;
+    private static bool CanReceiveHints(Player? player)
+    {
+        if (player == null || player.IsDestroyed || player.IsHost || !player.IsReady)
+            return false;
+
+        NetworkConnectionToClient? connection = player.ConnectionToClient;
+        return connection != null && connection.isAuthenticated && connection.isReady;
+    }
 
     private static ulong CreateHintFingerprint(Hint hint)
     {

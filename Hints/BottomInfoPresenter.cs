@@ -147,7 +147,7 @@ internal sealed class BottomInfoPresenter
 
         _currentContent = content;
 
-        foreach (Player player in Player.List)
+        foreach (Player player in Player.ReadyList)
             ShowCurrent(player);
     }
 

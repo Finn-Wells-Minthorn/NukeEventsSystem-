@@ -36,7 +36,7 @@ public sealed class EventRollPresenter
         _isVisible = true;
         _displayedEvent = null;
 
-        foreach (Player player in Player.List)
+        foreach (Player player in Player.ReadyList)
             ShowCurrent(player);
     }
 
@@ -185,7 +185,7 @@ public sealed class EventRollPresenter
         _isVisible = true;
         _displayedEvent = eventInstance;
 
-        foreach (Player player in Player.List)
+        foreach (Player player in Player.ReadyList)
             ShowCurrent(player);
     }
 
