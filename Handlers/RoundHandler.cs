@@ -38,6 +38,10 @@ public class RoundHandler : CustomEventsHandler
         _bottomInfoPresenter?.Stop();
         EventManager.EventStarting -= OnEventStarting;
         EventManager.EventStarting += OnEventStarting;
+        EventManager.EventStarted -= OnEventStarted;
+        EventManager.EventStarted += OnEventStarted;
+        EventManager.EventStopped -= OnEventStopped;
+        EventManager.EventStopped += OnEventStopped;
         _isActive = true;
     }
 
@@ -45,6 +49,8 @@ public class RoundHandler : CustomEventsHandler
     {
         _isActive = false;
         EventManager.EventStarting -= OnEventStarting;
+        EventManager.EventStarted -= OnEventStarted;
+        EventManager.EventStopped -= OnEventStopped;
         CancelServerInfoRestore();
         CancelPendingSelection();
         _bottomInfoPresenter?.Stop();
@@ -107,6 +113,18 @@ public class RoundHandler : CustomEventsHandler
             return;
 
         CancelPendingSelection();
+    }
+
+    private void OnEventStarted(EventBase eventInstance)
+    {
+        if (_isActive)
+            BottomInfoPresenter.ShowActiveEvent(eventInstance);
+    }
+
+    private void OnEventStopped(EventBase eventInstance)
+    {
+        if (_isActive)
+            BottomInfoPresenter.ShowServerInfo();
     }
 
     public override void OnServerWaitingForPlayers()
@@ -226,7 +244,7 @@ public class RoundHandler : CustomEventsHandler
         CancelServerInfoRestore();
         CancelCountdownWatcher();
         _eventRollPresenter?.Cancel();
-        BottomInfoPresenter.Start();
+        BottomInfoPresenter.ShowCurrentEvent();
 
         if (!global::MyFirstPlugin.MyFirstPlugin.AutomaticEventsEnabled)
         {
@@ -254,6 +272,7 @@ public class RoundHandler : CustomEventsHandler
         EventBase? launchedEvent = EventManager.StartEvent(selectedEvent);
         if (launchedEvent == null)
         {
+            BottomInfoPresenter.ShowCurrentEvent();
             Logger.Warn($"[SCPEventSystem] Failed to start selected event: {selectedEvent.Name}");
             return;
         }

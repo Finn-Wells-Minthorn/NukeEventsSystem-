@@ -10,30 +10,23 @@ public sealed class BottomInfoConfig
 
     public int FontSize { get; set; } = 18;
 
-    public string TextColor { get; set; } = "#D9F2FF";
-
-    public bool ShowServerInfo { get; set; } = true;
-
     public string ServerInfoText { get; set; } = "NUKE EVENTS";
 
-    public string ServerInfoColor { get; set; } = "";
+    public string ServerInfoColor { get; set; } = "#D9F2FF";
 
-    public float ServerInfoDurationSeconds { get; set; } = 40f;
+    public bool GradientEnabled { get; set; } = true;
 
-    public bool ShowEventDetails { get; set; } = true;
+    public float GradientAnimationSpeed { get; set; } = 0.15f;
 
-    public float EventDetailsDurationSeconds { get; set; } = 10f;
+    public float GradientRefreshIntervalSeconds { get; set; } = 0.5f;
 
-    public bool TipsEnabled { get; set; } = false;
-
-    public string TipColor { get; set; } = "#FFE6A3";
-
-    public float TipDurationSeconds { get; set; } = 45f;
-
-    public List<string> Tips { get; set; } = new()
+    public List<string> GradientColors { get; set; } = new()
     {
-        "Special events are selected before each round.",
-        "Adapt your strategy to the active event.",
-        "Work with your team and watch for event-specific changes."
+        "#FF0000",
+        "#FF8C00",
+        "#FFFF00",
+        "#00FF00",
+        "#00BFFF",
+        "#8A2BE2"
     };
 }

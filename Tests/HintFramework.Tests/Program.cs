@@ -28,21 +28,22 @@ internal static class Program
         Run("event color fallback", EventColorFallback);
         Run("configured event metadata retrieval", ConfiguredEventMetadataRetrieval);
         Run("default event display-name casing", DefaultEventDisplayNameCasing);
-        Run("uploaded bottom-info values are defaults", UploadedBottomInfoValuesAreDefaults);
-        Run("pre-round server info is standalone", PreRoundServerInfoIsStandalone);
+        Run("persistent bottom watermark config", PersistentBottomWatermarkConfig);
+        Run("gradient formatter produces rich text", GradientFormatterProducesRichText);
+        Run("disabled gradient uses static fallback", DisabledGradientUsesStaticFallback);
+        Run("invalid gradient falls back safely", InvalidGradientFallsBackSafely);
+        Run("active event watermark stays white", ActiveEventWatermarkStaysWhite);
+        Run("bottom watermark switches presentation", BottomWatermarkSwitchesPresentation);
         Run("custom event display-name casing is preserved", CustomEventDisplayNameCasingIsPreserved);
         Run("roulette shares configured event color", RouletteSharesConfiguredEventColor);
         Run("roulette keeps preselected winner", RouletteKeepsPreselectedWinner);
         Run("configurable roulette total duration", ConfigurableRouletteTotalDuration);
         Run("roulette staged pacing", RouletteStagedPacing);
         Run("roulette final result formatting", RouletteFinalResultFormatting);
+        Run("roulette prevents consecutive duplicates", RoulettePreventsConsecutiveDuplicates);
+        Run("single-event roulette is safe", SingleEventRouletteIsSafe);
         Run("roulette final-five cutoff", RouletteFinalFiveCutoff);
-        Run("bottom cycle ordering", BottomCycleOrdering);
-        Run("bottom cycle skips unavailable event", BottomCycleSkipsUnavailableEvent);
-        Run("tip rotation", TipRotation);
-        Run("tips-disabled provider skipping", TipsDisabledProviderSkipping);
-        Run("provider-specific durations", ProviderSpecificDurations);
-        Run("bottom cycle lifecycle protection", BottomCycleLifecycleProtection);
+        Run("watermark animation lifecycle protection", WatermarkAnimationLifecycleProtection);
 
         Console.WriteLine($"Hint framework tests passed: {_passed}/{_run}");
         return 0;
@@ -275,38 +276,126 @@ internal static class Program
             "Escalation should use the requested lowercase default.");
     }
 
-    private static void UploadedBottomInfoValuesAreDefaults()
+    private static void PersistentBottomWatermarkConfig()
     {
         BottomInfoConfig config = new();
 
         Assert(Math.Abs(config.VerticalPosition - 2f) < 0.001f,
-            "The uploaded bottom position should be the default.");
-        Assert(Math.Abs(config.ServerInfoDurationSeconds - 40f) < 0.001f,
-            "The uploaded server-info duration should be the default.");
-        Assert(Math.Abs(config.EventDetailsDurationSeconds - 10f) < 0.001f,
-            "The uploaded event-details duration should be the default.");
-        Assert(!config.TipsEnabled,
-            "Tips should be disabled by default to match the uploaded config.");
-        Assert(Math.Abs(config.TipDurationSeconds - 45f) < 0.001f,
-            "The uploaded tip duration should remain the default.");
+            "The configured live-test bottom position should remain the default.");
+        Assert(config.FontSize == 18, "The bottom watermark font size should remain configurable.");
+        Assert(config.ServerInfoText == "NUKE EVENTS",
+            "The persistent watermark should use the configured server text.");
+        Assert(config.GradientEnabled, "The moving watermark gradient should be enabled by default.");
+        Assert(Math.Abs(config.GradientAnimationSpeed - 0.15f) < 0.001f,
+            "The default gradient speed should be 0.15 cycles per second.");
+        Assert(Math.Abs(config.GradientRefreshIntervalSeconds - 0.5f) < 0.001f,
+            "The default gradient refresh interval should be conservative.");
+        Assert(config.GradientColors.Count == 6,
+            "The default moving gradient should contain six colors.");
+
+        foreach (System.Reflection.PropertyInfo property in typeof(BottomInfoConfig).GetProperties())
+        {
+            string propertyName = property.Name;
+            Assert(propertyName.IndexOf("Tip", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   propertyName.IndexOf("Duration", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   propertyName.IndexOf("EventDetails", StringComparison.OrdinalIgnoreCase) < 0,
+                $"Obsolete bottom-cycle config remains: {propertyName}.");
+        }
     }
 
-    private static void PreRoundServerInfoIsStandalone()
+    private static void GradientFormatterProducesRichText()
     {
-        BottomInfoConfig config = new();
-        ServerInfoProvider provider = new(
-            config.ShowServerInfo,
-            config.ServerInfoText,
-            config.ServerInfoColor,
-            config.ServerInfoDurationSeconds);
-        BottomInfoLoopState loopState = new();
+        BottomWatermarkRenderer renderer = new(
+            gradientEnabled: true,
+            new[] { "#FF0000", "#0000FF" },
+            animationSpeed: 0.25f,
+            refreshIntervalSeconds: 0.5f,
+            staticColor: "#FFFFFF");
 
-        Assert(provider.TryGetContent(default, out BottomInfoContent content),
-            "Server info should be available without an active event.");
-        Assert(content.Text == "NUKE EVENTS",
-            "Pre-round server info should use the configured server text.");
-        Assert(!loopState.IsRunning,
-            "Displaying only pre-round server info must not start a rotation loop.");
+        string firstFrame = renderer.Format("NUKE EVENTS", null, 18, phase: 0f);
+        string secondFrame = renderer.Format("NUKE EVENTS", null, 18, phase: 0.25f);
+
+        Assert(firstFrame.StartsWith("<size=18><nobr><b>", StringComparison.Ordinal),
+            "The watermark did not emit its expected size, no-wrap, and bold tags.");
+        Assert(CountOccurrences(firstFrame, "<color=#") == 10,
+            "The gradient should distribute colors across all ten non-space letters.");
+        Assert(CountOccurrences(firstFrame, "<color=") == CountOccurrences(firstFrame, "</color>"),
+            "The gradient emitted unbalanced TMP color tags.");
+        Assert(firstFrame.EndsWith("</b></nobr></size>", StringComparison.Ordinal),
+            "The gradient formatter did not close its TMP tags.");
+        Assert(firstFrame != secondFrame,
+            "Changing gradient phase should produce a visibly different moving-gradient frame.");
+    }
+
+    private static void DisabledGradientUsesStaticFallback()
+    {
+        BottomWatermarkRenderer renderer = new(
+            gradientEnabled: false,
+            new[] { "#FF0000", "#0000FF" },
+            animationSpeed: 0.25f,
+            refreshIntervalSeconds: 0.5f,
+            staticColor: "#12ab34");
+        string content = renderer.Format("NUKE EVENTS", null, 18, phase: 0.5f);
+
+        Assert(!renderer.CanAnimate, "A disabled gradient must not start an animation loop.");
+        Assert(content.Contains("<b><color=#12AB34>NUKE EVENTS</color></b>"),
+            "A disabled gradient did not use the configured static fallback color.");
+    }
+
+    private static void InvalidGradientFallsBackSafely()
+    {
+        BottomWatermarkRenderer renderer = new(
+            gradientEnabled: true,
+            new[] { "invalid", "", "#GGGGGG" },
+            animationSpeed: float.NaN,
+            refreshIntervalSeconds: 0.01f,
+            staticColor: "invalid");
+        string content = renderer.Format("NUKE EVENTS", null, 18, phase: float.NaN);
+
+        Assert(renderer.UsedDefaultGradient,
+            "An invalid gradient should fall back to the built-in readable palette.");
+        Assert(renderer.CanAnimate,
+            "The built-in fallback gradient should remain safely animatable.");
+        Assert(renderer.RefreshIntervalSeconds >= BottomWatermarkRenderer.MinimumRefreshIntervalSeconds,
+            "Unsafe refresh rates should be clamped.");
+        Assert(CountOccurrences(content, "<color=#") == 10,
+            "The fallback gradient should still format each visible letter.");
+    }
+
+    private static void ActiveEventWatermarkStaysWhite()
+    {
+        BottomWatermarkRenderer renderer = new(
+            gradientEnabled: true,
+            new[] { "#FF0000", "#0000FF" },
+            animationSpeed: 0.25f,
+            refreshIntervalSeconds: 0.5f,
+            staticColor: "#FFFFFF");
+        string content = renderer.Format("NUKE EVENTS", "jailbird mayhem", 18, phase: 0f);
+
+        Assert(content.Contains("</b> <color=#FFFFFF>jailbird mayhem</color>"),
+            "The active event name should be normal, white, and outside the bold server text.");
+        Assert(!content.Contains("<b>jailbird mayhem</b>"),
+            "The active event name must not inherit bold formatting.");
+    }
+
+    private static void BottomWatermarkSwitchesPresentation()
+    {
+        BottomWatermarkRenderer renderer = new(
+            gradientEnabled: false,
+            gradientColors: null,
+            animationSpeed: 0f,
+            refreshIntervalSeconds: 0.5f,
+            staticColor: "#D9F2FF");
+
+        string lobby = renderer.Format("NUKE EVENTS", null, 18, phase: 0f);
+        string activeRound = renderer.Format("NUKE EVENTS", "blackout event", 18, phase: 0f);
+
+        Assert(!lobby.Contains("#FFFFFF>blackout event"),
+            "The waiting-lobby watermark should contain only server information.");
+        Assert(activeRound.Contains("</b> <color=#FFFFFF>blackout event</color>"),
+            "The active-round watermark did not append the configured event display name.");
+        Assert(!activeRound.Contains(":"),
+            "The persistent watermark should not insert a colon before the event name.");
     }
 
     private static void CustomEventDisplayNameCasingIsPreserved()
@@ -338,15 +427,11 @@ internal static class Program
         EventDisplayMetadata metadata = EventDisplayMetadata.Resolve(config, "Fallback event");
 
         string rouletteText = HintUiFormatter.FormatEventName(metadata.Name, metadata.Color);
-        BottomInfoContext context = new(metadata.Name, metadata.Description, metadata.Color);
-        EventDetailsProvider detailsProvider = new(true, 45f);
 
-        Assert(detailsProvider.TryGetContent(context, out BottomInfoContent details),
-            "Configured event details should be available.");
         Assert(metadata.Color == "#12AB34" && rouletteText.Contains("<color=#12AB34>"),
             "Roulette did not use the color resolved from shared event display metadata.");
-        Assert(details.Color == metadata.Color,
-            "Bottom event details did not use the same configured event color source as the roulette.");
+        Assert(metadata.Description == "Configured description.",
+            "Removing bottom event descriptions must not remove configured event metadata.");
 
         foreach (System.Reflection.PropertyInfo property in typeof(EventRollConfig).GetProperties())
         {
@@ -411,13 +496,68 @@ internal static class Program
 
     private static void RouletteFinalResultFormatting()
     {
-        string rolling = HintUiFormatter.FormatEventName("Blackout Event", "#6699FF", bold: false);
+        string rolling = HintUiFormatter.FormatEventName("Blackout Event", "#6699FF", bold: true);
         string final = HintUiFormatter.FormatEventName("Blackout Event", "#6699FF", bold: true);
 
-        Assert(!rolling.Contains("<b>"), "Rolling entries should not be bold.");
+        Assert(rolling.Contains("<b>Blackout Event</b>"), "Rolling event names should be bold.");
         Assert(final.Contains("<b>Blackout Event</b>"), "The final selected event should be bold.");
+        Assert(rolling.Contains("<color=#6699FF>") && final.Contains("<color=#6699FF>"),
+            "Rolling and final event names should retain the configured event color.");
         Assert(rolling.StartsWith("<nobr>", StringComparison.Ordinal) && final.EndsWith("</nobr>", StringComparison.Ordinal),
             "Roulette names should not wrap and move the independently positioned header.");
+    }
+
+    private static void RoulettePreventsConsecutiveDuplicates()
+    {
+        const string PreselectedWinner = "blackout event";
+        RouletteAnimationPlan<string> plan = RouletteAnimationPlan<string>.Create(
+            PreselectedWinner,
+            new[]
+            {
+                "blackout event",
+                "blackout event",
+                "infection",
+                "speed demon",
+                "infection"
+            },
+            RouletteTiming.DefaultDurationSeconds,
+            10f,
+            StringComparer.OrdinalIgnoreCase);
+
+        for (int index = 1; index < plan.Frames.Count; index++)
+        {
+            Assert(!string.Equals(
+                    plan.Frames[index - 1].Value,
+                    plan.Frames[index].Value,
+                    StringComparison.OrdinalIgnoreCase),
+                "Two consecutive rolling frames displayed the same event.");
+        }
+
+        Assert(plan.Frames.Count == 0 ||
+               !string.Equals(
+                   plan.Frames[plan.Frames.Count - 1].Value,
+                   plan.SelectedWinner,
+                   StringComparison.OrdinalIgnoreCase),
+            "The last rolling frame should differ from the predetermined result when alternatives exist.");
+        Assert(plan.SelectedWinner == PreselectedWinner,
+            "Duplicate suppression must never replace the predetermined winner.");
+    }
+
+    private static void SingleEventRouletteIsSafe()
+    {
+        const string OnlyEvent = "infection";
+        RouletteAnimationPlan<string> plan = RouletteAnimationPlan<string>.Create(
+            OnlyEvent,
+            new[] { OnlyEvent, OnlyEvent },
+            RouletteTiming.DefaultDurationSeconds,
+            10f,
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert(plan.Frames.Count > 0, "A single eligible event should still produce a safe roll plan.");
+        foreach (RouletteFrame<string> frame in plan.Frames)
+            Assert(frame.Value == OnlyEvent, "A single-event roll introduced an unknown presentation value.");
+        Assert(plan.SelectedWinner == OnlyEvent,
+            "The single eligible event must remain the predetermined winner.");
     }
 
     private static void RouletteStagedPacing()
@@ -475,110 +615,30 @@ internal static class Program
             "A late-starting countdown should degrade directly to the preselected final result.");
     }
 
-    private static void BottomCycleOrdering()
+    private static void WatermarkAnimationLifecycleProtection()
     {
-        BottomInfoCycle cycle = CreateBottomCycle(new[] { "First tip", "Second tip" });
-        BottomInfoContext context = new("Blackout Event", "Facility lights are disabled.", "#6699FF");
-
-        AssertNext(cycle, context, "NUKE EVENTS");
-        AssertNext(cycle, context, "Blackout Event: Facility lights are disabled.");
-        AssertNext(cycle, context, "TIP: First tip");
-        AssertNext(cycle, context, "NUKE EVENTS");
-    }
-
-    private static void BottomCycleSkipsUnavailableEvent()
-    {
-        BottomInfoCycle cycle = CreateBottomCycle(new[] { "Only tip" });
-        BottomInfoContext noEvent = default;
-
-        AssertNext(cycle, noEvent, "NUKE EVENTS");
-        AssertNext(cycle, noEvent, "TIP: Only tip");
-        AssertNext(cycle, noEvent, "NUKE EVENTS");
-    }
-
-    private static void TipRotation()
-    {
-        BottomInfoCycle cycle = CreateBottomCycle(new[] { "First tip", "Second tip" });
-        BottomInfoContext noEvent = default;
-
-        AssertNext(cycle, noEvent, "NUKE EVENTS");
-        AssertNext(cycle, noEvent, "TIP: First tip");
-        AssertNext(cycle, noEvent, "NUKE EVENTS");
-        AssertNext(cycle, noEvent, "TIP: Second tip");
-        AssertNext(cycle, noEvent, "NUKE EVENTS");
-        AssertNext(cycle, noEvent, "TIP: First tip");
-    }
-
-    private static void TipsDisabledProviderSkipping()
-    {
-        BottomInfoCycle cycle = new(new IBottomInfoProvider[]
-        {
-            new ServerInfoProvider(true, "NUKE EVENTS", null, 60f),
-            new EventDetailsProvider(true, 45f),
-            new TipProvider(false, new[] { "Hidden tip" }, null, 45f)
-        });
-        cycle.Reset();
-
-        BottomInfoContext context = new("Infection", "Configured infection description.", "#66FF66");
-        AssertNext(cycle, context, "NUKE EVENTS");
-        AssertNext(cycle, context, "Infection: Configured infection description.");
-        AssertNext(cycle, context, "NUKE EVENTS");
-    }
-
-    private static void ProviderSpecificDurations()
-    {
-        BottomInfoCycle cycle = CreateBottomCycle(new[] { "One tip" });
-        BottomInfoContext context = new("Escalation", "Configured escalation description.", "#FF8C42");
-
-        AssertNext(cycle, context, "NUKE EVENTS", 60f);
-        AssertNext(cycle, context, "Escalation: Configured escalation description.", 45f);
-        AssertNext(cycle, context, "TIP: One tip", 45f);
-    }
-
-    private static void BottomCycleLifecycleProtection()
-    {
-        BottomInfoLoopState state = new();
-        Assert(state.TryStart(out int firstGeneration), "The first cycle loop should start.");
-        Assert(!state.TryStart(out int duplicateGeneration), "A duplicate cycle loop must be rejected.");
+        BottomWatermarkAnimationState state = new();
+        Assert(state.TryStart(out int firstGeneration), "The first gradient loop should start.");
+        Assert(!state.TryStart(out int duplicateGeneration), "A duplicate gradient loop must be rejected.");
         Assert(firstGeneration == duplicateGeneration, "Duplicate start should retain the active generation.");
 
         state.Stop();
         Assert(!state.IsCurrent(firstGeneration), "Stopping must invalidate stale callbacks.");
-        Assert(state.TryStart(out int secondGeneration), "The cycle should start cleanly next round.");
-        Assert(secondGeneration != firstGeneration, "A restarted cycle requires a fresh generation.");
+        Assert(state.TryStart(out int secondGeneration), "The gradient should start cleanly next lifecycle.");
+        Assert(secondGeneration != firstGeneration, "A restarted gradient requires a fresh generation.");
     }
 
-    private static BottomInfoCycle CreateBottomCycle(string[] tips)
+    private static int CountOccurrences(string value, string token)
     {
-        BottomInfoCycle cycle = new(new IBottomInfoProvider[]
+        int count = 0;
+        int index = 0;
+        while ((index = value.IndexOf(token, index, StringComparison.Ordinal)) >= 0)
         {
-            new ServerInfoProvider(true, "NUKE EVENTS", null, 60f),
-            new EventDetailsProvider(true, 45f),
-            new TipProvider(true, tips, null, 45f)
-        });
-        cycle.Reset();
-        return cycle;
-    }
-
-    private static void AssertNext(BottomInfoCycle cycle, BottomInfoContext context, string expected)
-    {
-        AssertNext(cycle, context, expected, expectedDuration: null);
-    }
-
-    private static void AssertNext(
-        BottomInfoCycle cycle,
-        BottomInfoContext context,
-        string expected,
-        float? expectedDuration)
-    {
-        Assert(cycle.TryGetNext(context, out BottomInfoContent content), "Expected another bottom-cycle entry.");
-        Assert(content.Text == expected, $"Expected '{expected}' but received '{content.Text}'.");
-
-        if (expectedDuration.HasValue)
-        {
-            Assert(Math.Abs(content.DurationSeconds - expectedDuration.Value) < 0.001f,
-                $"Expected duration '{expectedDuration.Value}' but received '{content.DurationSeconds}'.");
+            ++count;
+            index += token.Length;
         }
+
+        return count;
     }
 
     private static HintElement Element(HintElementId id, string content, float position) =>

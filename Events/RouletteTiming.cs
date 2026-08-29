@@ -169,19 +169,48 @@ internal sealed class RouletteAnimationPlan<T>
         T selectedWinner,
         IReadOnlyList<T> rollingOptions,
         float configuredDurationSeconds,
-        float availableAnimationSeconds)
+        float availableAnimationSeconds,
+        IEqualityComparer<T>? comparer = null)
     {
         if (rollingOptions == null)
             throw new ArgumentNullException(nameof(rollingOptions));
+
+        comparer ??= EqualityComparer<T>.Default;
 
         IReadOnlyList<RouletteDelay> schedule = RouletteTiming.CreateSchedule(
             configuredDurationSeconds,
             availableAnimationSeconds);
         List<RouletteFrame<T>> frames = new(schedule.Count);
 
-        for (int index = 0; index < schedule.Count && rollingOptions.Count > 0; index++)
+        List<T> uniqueOptions = new();
+        foreach (T option in rollingOptions)
         {
-            T value = rollingOptions[index % rollingOptions.Count];
+            if (!uniqueOptions.Any(existing => comparer.Equals(existing, option)))
+                uniqueOptions.Add(option);
+        }
+
+        int startIndex = 0;
+        if (uniqueOptions.Count > 1 && schedule.Count > 0)
+        {
+            int finalRollingOffset = (schedule.Count - 1) % uniqueOptions.Count;
+
+            for (int candidateStartIndex = 0;
+                 candidateStartIndex < uniqueOptions.Count;
+                 candidateStartIndex++)
+            {
+                T finalRollingValue = uniqueOptions[
+                    (candidateStartIndex + finalRollingOffset) % uniqueOptions.Count];
+                if (!comparer.Equals(finalRollingValue, selectedWinner))
+                {
+                    startIndex = candidateStartIndex;
+                    break;
+                }
+            }
+        }
+
+        for (int index = 0; index < schedule.Count && uniqueOptions.Count > 0; index++)
+        {
+            T value = uniqueOptions[(startIndex + index) % uniqueOptions.Count];
             frames.Add(new RouletteFrame<T>(value, schedule[index]));
         }
 

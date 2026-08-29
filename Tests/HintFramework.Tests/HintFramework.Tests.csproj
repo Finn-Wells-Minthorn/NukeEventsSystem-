@@ -12,7 +12,7 @@
     <Compile Include="..\..\Hints\HintPlayerState.cs" Link="Hints\HintPlayerState.cs" />
     <Compile Include="..\..\Hints\HintComposer.cs" Link="Hints\HintComposer.cs" />
     <Compile Include="..\..\Hints\HintUiFormatter.cs" Link="Hints\HintUiFormatter.cs" />
-    <Compile Include="..\..\Hints\BottomInfoCycle.cs" Link="Hints\BottomInfoCycle.cs" />
+    <Compile Include="..\..\Hints\BottomWatermark.cs" Link="Hints\BottomWatermark.cs" />
     <Compile Include="..\..\Config\EventDisplayConfig.cs" Link="Config\EventDisplayConfig.cs" />
     <Compile Include="..\..\Config\BottomInfoConfig.cs" Link="Config\BottomInfoConfig.cs" />
     <Compile Include="..\..\Config\EventRollConfig.cs" Link="Config\EventRollConfig.cs" />

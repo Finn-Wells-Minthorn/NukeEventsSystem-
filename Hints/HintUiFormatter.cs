@@ -8,19 +8,11 @@ internal static class HintUiFormatter
     public const string DefaultEventColor = "#FFFFFF";
     public const string DefaultTextColor = "#D9F2FF";
 
-    public static string FormatEventName(string eventName, string? color, bool bold = false)
+    public static string FormatEventName(string eventName, string? color, bool bold = true)
     {
         string readableName = string.IsNullOrWhiteSpace(eventName) ? "Unknown Event" : eventName.Trim();
         string formattedName = bold ? $"<b>{readableName}</b>" : readableName;
         return $"<nobr><color={ResolveColor(color, DefaultEventColor)}>{formattedName}</color></nobr>";
-    }
-
-    public static string FormatBottomText(string text, string? color, string? defaultColor, int fontSize)
-    {
-        string readableText = string.IsNullOrWhiteSpace(text) ? " " : text.Trim();
-        string readableColor = ResolveColor(color, ResolveColor(defaultColor, DefaultTextColor));
-        int readableSize = Math.Max(1, fontSize);
-        return $"<size={readableSize}><color={readableColor}>{readableText}</color></size>";
     }
 
     public static string ResolveColor(string? color, string fallback)
@@ -34,7 +26,7 @@ internal static class HintUiFormatter
         return DefaultEventColor;
     }
 
-    private static bool TryNormalizeHexColor(string? color, out string normalized)
+    internal static bool TryNormalizeHexColor(string? color, out string normalized)
     {
         normalized = string.Empty;
         if (string.IsNullOrWhiteSpace(color))

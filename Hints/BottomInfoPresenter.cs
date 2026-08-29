@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using LabApi.Features.Wrappers;
 using MEC;
@@ -9,93 +8,50 @@ namespace MyFirstPlugin.Hints;
 
 internal sealed class BottomInfoPresenter
 {
-    private const float MinimumCycleIntervalSeconds = 1f;
-
     private readonly BottomInfoConfig _config;
-    private readonly ServerInfoProvider _serverInfoProvider;
-    private readonly BottomInfoCycle _cycle;
-    private readonly BottomInfoLoopState _loopState = new();
-    private CoroutineHandle _cycleHandle;
+    private readonly BottomWatermarkRenderer _renderer;
+    private readonly BottomWatermarkAnimationState _animationState = new();
+    private CoroutineHandle _animationHandle;
     private bool _isVisible;
+    private float _phase;
+    private string? _activeEventName;
     private string? _currentContent;
-    private float _currentDurationSeconds;
 
     public BottomInfoPresenter(BottomInfoConfig? config)
     {
         _config = config ?? new BottomInfoConfig();
-        _serverInfoProvider = new ServerInfoProvider(
-            _config.ShowServerInfo,
-            _config.ServerInfoText,
-            _config.ServerInfoColor,
-            _config.ServerInfoDurationSeconds);
-        _cycle = new BottomInfoCycle(new IBottomInfoProvider[]
-        {
-            _serverInfoProvider,
-            new EventDetailsProvider(
-                _config.ShowEventDetails,
-                _config.EventDetailsDurationSeconds),
-            new TipProvider(
-                _config.TipsEnabled,
-                _config.Tips,
-                _config.TipColor,
-                _config.TipDurationSeconds)
-        });
+        _renderer = new BottomWatermarkRenderer(
+            _config.GradientEnabled,
+            _config.GradientColors,
+            _config.GradientAnimationSpeed,
+            _config.GradientRefreshIntervalSeconds,
+            _config.ServerInfoColor);
     }
 
-    public bool IsRunning => _loopState.IsRunning;
+    public bool IsRunning => _animationState.IsRunning;
 
-    public bool Start()
+    public bool ShowServerInfo() => Show(activeEventName: null);
+
+    public bool ShowActiveEvent(EventBase eventInstance) =>
+        eventInstance != null
+            ? Show(eventInstance.DisplayName)
+            : ShowServerInfo();
+
+    public bool ShowCurrentEvent()
     {
-        if (!_config.Enabled || !_loopState.TryStart(out int generation))
-            return false;
-
-        _cycle.Reset();
-        if (!ShowNext())
-        {
-            _loopState.Stop();
-            return false;
-        }
-
-        _cycleHandle = Timing.RunCoroutine(RunCycle(generation));
-        return true;
-    }
-
-    public bool ShowServerInfo()
-    {
-        StopCycle();
-
-        if (!_config.Enabled ||
-            !_serverInfoProvider.TryGetContent(default, out BottomInfoContent content))
-        {
-            ClearDisplay();
-            return false;
-        }
-
-        ShowContent(content);
-        return true;
+        EventBase? currentEvent = EventManager.CurrentEvent;
+        return currentEvent != null && currentEvent.IsRunning
+            ? ShowActiveEvent(currentEvent)
+            : ShowServerInfo();
     }
 
     public void Stop()
     {
-        StopCycle();
-        ClearDisplay();
-    }
-
-    private void StopCycle()
-    {
-        _loopState.Stop();
-
-        if (_cycleHandle.IsValid)
-            Timing.KillCoroutines(_cycleHandle);
-
-        _cycleHandle = default;
-    }
-
-    private void ClearDisplay()
-    {
+        StopAnimation();
         _isVisible = false;
+        _phase = 0f;
+        _activeEventName = null;
         _currentContent = null;
-        _currentDurationSeconds = 0f;
         RemoveFromAllPlayers();
     }
 
@@ -112,69 +68,87 @@ internal sealed class BottomInfoPresenter
             _config.VerticalPosition);
     }
 
-    private IEnumerator<float> RunCycle(int generation)
+    private bool Show(string? activeEventName)
+    {
+        if (!_config.Enabled)
+        {
+            Stop();
+            return false;
+        }
+
+        _activeEventName = string.IsNullOrWhiteSpace(activeEventName)
+            ? null
+            : activeEventName!.Trim();
+        _isVisible = true;
+        RenderIfChanged();
+        EnsureAnimationRunning();
+        return true;
+    }
+
+    private void EnsureAnimationRunning()
+    {
+        if (!_renderer.CanAnimate)
+        {
+            StopAnimation();
+            return;
+        }
+
+        if (!_animationState.TryStart(out int generation))
+            return;
+
+        _animationHandle = Timing.RunCoroutine(RunAnimation(generation));
+    }
+
+    private void StopAnimation()
+    {
+        _animationState.Stop();
+
+        if (_animationHandle.IsValid)
+            Timing.KillCoroutines(_animationHandle);
+
+        _animationHandle = default;
+    }
+
+    private IEnumerator<float> RunAnimation(int generation)
     {
         try
         {
-            while (_loopState.IsCurrent(generation))
+            while (_animationState.IsCurrent(generation))
             {
-                yield return Timing.WaitForSeconds(_currentDurationSeconds);
+                yield return Timing.WaitForSeconds(_renderer.RefreshIntervalSeconds);
 
-                if (!_loopState.IsCurrent(generation))
+                if (!_animationState.IsCurrent(generation))
                     yield break;
 
-                if (!ShowNext())
-                    yield break;
+                _phase = _renderer.AdvancePhase(_phase);
+                RenderIfChanged();
             }
         }
         finally
         {
-            if (_loopState.IsCurrent(generation))
+            if (_animationState.IsCurrent(generation))
             {
-                _loopState.Stop();
-                _cycleHandle = default;
+                _animationState.Stop();
+                _animationHandle = default;
             }
         }
     }
 
-    private bool ShowNext()
+    private void RenderIfChanged()
     {
-        if (!_cycle.TryGetNext(CreateContext(), out BottomInfoContent entry))
-        {
-            ClearDisplay();
-            return false;
-        }
+        string content = _renderer.Format(
+            _config.ServerInfoText,
+            _activeEventName,
+            _config.FontSize,
+            _phase);
 
-        ShowContent(entry);
-        return true;
-    }
+        if (string.Equals(content, _currentContent, System.StringComparison.Ordinal))
+            return;
 
-    private void ShowContent(BottomInfoContent content)
-    {
-        _currentContent = HintUiFormatter.FormatBottomText(
-            content.Text,
-            content.Color,
-            _config.TextColor,
-            _config.FontSize);
-        _currentDurationSeconds = Math.Max(
-            MinimumCycleIntervalSeconds,
-            content.DurationSeconds);
-        _isVisible = true;
+        _currentContent = content;
 
         foreach (Player player in Player.List)
             ShowCurrent(player);
-    }
-
-    private static BottomInfoContext CreateContext()
-    {
-        EventBase? currentEvent = EventManager.CurrentEvent;
-        if (currentEvent == null || !currentEvent.IsRunning)
-            return default;
-
-        return new BottomInfoContext(
-            currentEvent.DisplayName,
-            currentEvent.DisplayDescription,
-            currentEvent.DisplayColor);
     }
 
     private static void RemoveFromAllPlayers()

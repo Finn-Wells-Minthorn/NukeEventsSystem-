@@ -11,6 +11,10 @@ public static class EventManager
 
     public static event Action<EventBase>? EventStarting;
 
+    public static event Action<EventBase>? EventStarted;
+
+    public static event Action<EventBase>? EventStopped;
+
     public static EventBase? CurrentEvent { get; private set; }
 
     public static IReadOnlyCollection<EventBase> RegisteredEvents => Registered.Values;
@@ -132,6 +136,8 @@ public static class EventManager
             return null;
         }
 
+        EventStarted?.Invoke(eventInstance);
+
         return CurrentEvent;
     }
 
@@ -142,7 +148,15 @@ public static class EventManager
 
         EventBase current = CurrentEvent;
         CurrentEvent = null;
-        current.Stop();
+
+        try
+        {
+            current.Stop();
+        }
+        finally
+        {
+            EventStopped?.Invoke(current);
+        }
 
         return current;
     }
@@ -158,6 +172,8 @@ public static class EventManager
             Registered.Clear();
             CurrentEvent = null;
             EventStarting = null;
+            EventStarted = null;
+            EventStopped = null;
         }
     }
 

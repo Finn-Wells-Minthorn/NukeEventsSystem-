@@ -15,7 +15,6 @@ public sealed class EventRollPresenter
     private bool _isCancelled;
     private bool _isRunning;
     private bool _isVisible;
-    private bool _isFinalResult;
     private EventBase? _displayedEvent;
 
     private const string HeaderText = "Selecting Event...";
@@ -35,7 +34,6 @@ public sealed class EventRollPresenter
     public void ShowHeader()
     {
         _isVisible = true;
-        _isFinalResult = false;
         _displayedEvent = null;
 
         foreach (Player player in Player.List)
@@ -69,7 +67,7 @@ public sealed class EventRollPresenter
             HintUiFormatter.FormatEventName(
                 _displayedEvent.DisplayName,
                 _displayedEvent.DisplayColor,
-                _isFinalResult),
+                bold: true),
             _config.EventNameVerticalPosition);
     }
 
@@ -99,7 +97,7 @@ public sealed class EventRollPresenter
         if (eventOptions.Count == 0)
         {
             _isRunning = false;
-            ShowEvent(selectedEvent, isFinalResult: true);
+            ShowEvent(selectedEvent);
             onCompleted?.Invoke(selectedEvent);
             return;
         }
@@ -151,7 +149,8 @@ public sealed class EventRollPresenter
                 selectedEvent,
                 eventOptions,
                 _config.TotalDurationSeconds,
-                availableAnimationSeconds);
+                availableAnimationSeconds,
+                EventIdentityComparer.Instance);
 
             foreach (RouletteFrame<EventBase> frame in plan.Frames)
             {
@@ -163,14 +162,14 @@ public sealed class EventRollPresenter
                     break;
                 }
 
-                ShowEvent(frame.Value, isFinalResult: false);
+                ShowEvent(frame.Value);
                 yield return Timing.WaitForSeconds(frame.Delay.Seconds);
             }
 
             if (_isCancelled)
                 yield break;
 
-            ShowEvent(plan.SelectedWinner, isFinalResult: true);
+            ShowEvent(plan.SelectedWinner);
             onCompleted?.Invoke(plan.SelectedWinner);
         }
         finally
@@ -181,10 +180,9 @@ public sealed class EventRollPresenter
         }
     }
 
-    private void ShowEvent(EventBase eventInstance, bool isFinalResult)
+    private void ShowEvent(EventBase eventInstance)
     {
         _isVisible = true;
-        _isFinalResult = isFinalResult;
         _displayedEvent = eventInstance;
 
         foreach (Player player in Player.List)
@@ -194,7 +192,6 @@ public sealed class EventRollPresenter
     private void ClearDisplay()
     {
         _isVisible = false;
-        _isFinalResult = false;
         _displayedEvent = null;
 
         HintManager? manager = global::MyFirstPlugin.MyFirstPlugin.Hints;
@@ -206,5 +203,24 @@ public sealed class EventRollPresenter
             manager.Remove(player, HintElementId.LobbyEventName);
             manager.Remove(player, HintElementId.LobbyEventHeader);
         }
+    }
+
+    private sealed class EventIdentityComparer : IEqualityComparer<EventBase>
+    {
+        public static readonly EventIdentityComparer Instance = new();
+
+        public bool Equals(EventBase? first, EventBase? second)
+        {
+            if (ReferenceEquals(first, second))
+                return true;
+
+            if (first == null || second == null)
+                return false;
+
+            return string.Equals(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public int GetHashCode(EventBase eventInstance) =>
+            StringComparer.OrdinalIgnoreCase.GetHashCode(eventInstance.Name);
     }
 }
