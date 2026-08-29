@@ -17,7 +17,7 @@ public sealed class EventRollPresenter
     private bool _isVisible;
     private EventBase? _displayedEvent;
 
-    private const string HeaderText = "Selecting Event...";
+    private const string HeaderText = "selecting event";
 
     public EventRollPresenter()
         : this(new EventRollConfig())
