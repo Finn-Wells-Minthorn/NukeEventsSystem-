@@ -44,7 +44,6 @@ public sealed class JailbirdMayhemEvent : EventBase
     {
         Subscribe();
         ScheduleInitialPlayerSweep();
-        SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
 
         Console.WriteLine(
             $"[SCPEventSystem] Jailbird Mayhem activated: delay='{_config.SpawnProcessingDelaySeconds}', " +
@@ -396,14 +395,6 @@ public sealed class JailbirdMayhemEvent : EventBase
         }
 
         _pendingProcessing.Clear();
-    }
-
-    private static void SendAnnouncement(string announcement, ushort durationSeconds)
-    {
-        if (string.IsNullOrWhiteSpace(announcement) || durationSeconds == 0)
-            return;
-
-        Server.SendBroadcast(announcement, durationSeconds);
     }
 
     private sealed class PlayerLifeState

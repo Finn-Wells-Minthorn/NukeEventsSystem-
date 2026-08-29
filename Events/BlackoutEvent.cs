@@ -102,7 +102,6 @@ public class BlackoutEvent : EventBase
 
         _playerLives.Clear();
         RestoreFacilityLighting();
-        SendBroadcast(_config.EndAnnouncement, _config.EndAnnouncementDurationSeconds);
     }
 
     private void ScheduleIntro()
@@ -125,7 +124,6 @@ public class BlackoutEvent : EventBase
             return;
 
         _cinematicActive = true;
-        SendBroadcast(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
 
         ScheduleCinematicAction(CassieAnnouncementTimeSeconds, introGeneration, PlayCassieAnnouncement);
         ScheduleCinematicAction(
@@ -141,11 +139,7 @@ public class BlackoutEvent : EventBase
         ScheduleCinematicAction(
             FinalIntroWarningTimeSeconds,
             introGeneration,
-            () =>
-            {
-                SendBroadcast(_config.PreBlackoutWarning, _config.PreBlackoutWarningDurationSeconds);
-                DoIntroFlickerBurst(3, introGeneration);
-            }
+            () => DoIntroFlickerBurst(3, introGeneration)
         );
         ScheduleCinematicAction(
             NormalCycleStartTimeSeconds,
@@ -830,14 +824,6 @@ public class BlackoutEvent : EventBase
         {
             Logger.Warn($"[SCPEventSystem] Failed to cancel {operation}: {ex.Message}");
         }
-    }
-
-    private static void SendBroadcast(string announcement, ushort durationSeconds)
-    {
-        if (string.IsNullOrWhiteSpace(announcement) || durationSeconds == 0)
-            return;
-
-        Server.SendBroadcast(announcement, durationSeconds);
     }
 
     private void SetFacilityLighting(bool lightsOn)

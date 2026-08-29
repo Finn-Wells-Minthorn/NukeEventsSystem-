@@ -34,7 +34,6 @@ public sealed class EscalationEvent : EventBase
     {
         _currentStage = 0;
         Subscribe();
-        SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
 
         foreach (Player player in Player.List)
             ApplyCurrentProgressionSafely(player, true);

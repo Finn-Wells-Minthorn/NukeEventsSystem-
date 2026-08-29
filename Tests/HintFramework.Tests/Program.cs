@@ -38,7 +38,7 @@ internal static class Program
         Run("roulette shares configured event color", RouletteSharesConfiguredEventColor);
         Run("roulette keeps preselected winner", RouletteKeepsPreselectedWinner);
         Run("configurable roulette total duration", ConfigurableRouletteTotalDuration);
-        Run("roulette staged pacing", RouletteStagedPacing);
+        Run("roulette constant main pacing", RouletteConstantMainPacing);
         Run("roulette final result formatting", RouletteFinalResultFormatting);
         Run("roulette prevents consecutive duplicates", RoulettePreventsConsecutiveDuplicates);
         Run("single-event roulette is safe", SingleEventRouletteIsSafe);
@@ -560,24 +560,50 @@ internal static class Program
             "The single eligible event must remain the predetermined winner.");
     }
 
-    private static void RouletteStagedPacing()
+    private static void RouletteConstantMainPacing()
     {
-        RouletteAnimationPlan<string> plan = RouletteAnimationPlan<string>.Create(
+        RouletteAnimationPlan<string> fullPlan = RouletteAnimationPlan<string>.Create(
             "Winner",
             new[] { "A", "B", "Winner" },
             RouletteTiming.DefaultDurationSeconds,
             10f);
+        RouletteAnimationPlan<string> compactPlan = RouletteAnimationPlan<string>.Create(
+            "Winner",
+            new[] { "A", "B", "Winner" },
+            2.25f,
+            10f);
 
-        RoulettePacingStage[] stages = new RoulettePacingStage[plan.Frames.Count];
-        for (int index = 0; index < plan.Frames.Count; index++)
-            stages[index] = plan.Frames[index].Delay.Stage;
+        AssertConstantMainRoll(fullPlan);
+        AssertConstantMainRoll(compactPlan);
 
-        int firstSlowdown = Array.IndexOf(stages, RoulettePacingStage.BriefSlowdown);
-        int secondFast = Array.IndexOf(stages, RoulettePacingStage.SecondFast);
-        int finalSlowdown = Array.IndexOf(stages, RoulettePacingStage.FinalSlowdown);
+        float[] expectedFinalDelays = { 0.14f, 0.22f, 0.32f, 0.44f, 0.58f, 0.75f };
+        int finalSlowdown = FindFinalSlowdownStart(fullPlan);
+        Assert(fullPlan.Frames.Count - finalSlowdown == expectedFinalDelays.Length,
+            "The existing full final-slowdown frame count changed.");
 
-        Assert(firstSlowdown > 0 && secondFast > firstSlowdown && finalSlowdown > secondFast,
-            "Roulette pacing must progress fast, slow, fast, then into the final slowdown.");
+        for (int index = 0; index < expectedFinalDelays.Length; index++)
+        {
+            Assert(Math.Abs(
+                    fullPlan.Frames[finalSlowdown + index].Delay.Seconds -
+                    expectedFinalDelays[index]) < 0.001f,
+                "The existing final-slowdown timing changed.");
+        }
+    }
+
+    private static void AssertConstantMainRoll(RouletteAnimationPlan<string> plan)
+    {
+        int finalSlowdown = FindFinalSlowdownStart(plan);
+        Assert(finalSlowdown > 0, "The roulette should contain a normal roll before its final slowdown.");
+
+        float mainInterval = plan.Frames[0].Delay.Seconds;
+        for (int index = 0; index < finalSlowdown; index++)
+        {
+            RouletteDelay delay = plan.Frames[index].Delay;
+            Assert(delay.Stage == RoulettePacingStage.ConstantRoll,
+                "A removed mid-roll pacing stage remains in the main roulette roll.");
+            Assert(Math.Abs(delay.Seconds - mainInterval) < 0.0001f,
+                "The normal roulette roll does not use one consistent interval.");
+        }
 
         float priorDelay = 0f;
         for (int index = finalSlowdown; index < plan.Frames.Count; index++)
@@ -586,6 +612,17 @@ internal static class Program
             Assert(delay > priorDelay, "Final slowdown delays should increase progressively.");
             priorDelay = delay;
         }
+    }
+
+    private static int FindFinalSlowdownStart(RouletteAnimationPlan<string> plan)
+    {
+        for (int index = 0; index < plan.Frames.Count; index++)
+        {
+            if (plan.Frames[index].Delay.Stage == RoulettePacingStage.FinalSlowdown)
+                return index;
+        }
+
+        return -1;
     }
 
     private static void RouletteFinalFiveCutoff()

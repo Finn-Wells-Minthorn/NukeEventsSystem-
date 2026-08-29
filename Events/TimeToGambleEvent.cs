@@ -25,11 +25,6 @@ public class TimeToGambleEvent : EventBase
 
     protected override void OnStart()
     {
-        Server.SendBroadcast(
-            "<color=orange><b>TIME TO GAMBLE</b></color>",
-            10
-        );
-
         _machineManager.Unsubscribe();
         _machineManager.Clear();
         _rewardSpawner.Cleanup();

@@ -52,11 +52,6 @@ public class InfectionEventConfig
     public float ZombieHealthMultiplier { get; set; } = 1f;
 
     public float ZombieHumeShieldMultiplier { get; set; } = 1f;
-
-    public string StartAnnouncement { get; set; } =
-        "<color=#66ff66><b>INFECTION!</b></color> Plague Doctors lead the infected. Zombies spread the infection through their kills.";
-
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 12;
 }
 
 public class JailbirdMayhemEventConfig
@@ -78,11 +73,6 @@ public class JailbirdMayhemEventConfig
     public bool RemoveConventionalFirearmAmmunition { get; set; } = true;
 
     public int JailbirdAmount { get; set; } = 1;
-
-    public string StartAnnouncement { get; set; } =
-        "<color=orange><b>JAILBIRD MAYHEM!</b></color> Human firearms have been replaced with Jailbirds.";
-
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
 }
 
 public class EscalationEventConfig
@@ -131,9 +121,6 @@ public class EscalationEventConfig
 
     public float RespawnCatchUpDelaySeconds { get; set; } = 1f;
 
-    public string StartAnnouncement { get; set; } =
-        "<color=red><b>ESCALATION ACTIVATED!</b></color> SCPs begin empowered. Humans will grow stronger over time.";
-
     public string StageOneAnnouncement { get; set; } =
         "<color=yellow><b>ESCALATION STAGE 1</b></color> Human medical supplies deployed.";
 
@@ -145,8 +132,6 @@ public class EscalationEventConfig
 
     public string StageFourAnnouncement { get; set; } =
         "<color=red><b>ESCALATION STAGE 4</b></color> Human movement speed doubled.";
-
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
 
     public ushort StageAnnouncementDurationSeconds { get; set; } = 8;
 }
@@ -263,16 +248,4 @@ public class BlackoutEventConfig
     public bool CassiePlayBackgroundAudio { get; set; } = true;
 
     public float CassieGlitchIntensity { get; set; } = 1f;
-
-    public string StartAnnouncement { get; set; } = "<color=red><b>BLACKOUT EVENT ACTIVATED!</b></color>";
-
-    public string PreBlackoutWarning { get; set; } = "<color=red><b>FACILITY POWER FAILURE DETECTED</b></color>";
-
-    public string EndAnnouncement { get; set; } = "<color=green><b>Power restored. The blackout has ended.</b></color>";
-
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
-
-    public ushort PreBlackoutWarningDurationSeconds { get; set; } = 6;
-
-    public ushort EndAnnouncementDurationSeconds { get; set; } = 5;
 }

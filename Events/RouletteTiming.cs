@@ -6,9 +6,7 @@ namespace MyFirstPlugin.Events;
 
 internal enum RoulettePacingStage
 {
-    Fast,
-    BriefSlowdown,
-    SecondFast,
+    ConstantRoll,
     FinalSlowdown
 }
 
@@ -31,23 +29,25 @@ internal static class RouletteTiming
     public const float FinalWindowSeconds = 5f;
     public const float CountdownSafetyMarginSeconds = 1f;
     private const float MinimumSequenceDurationSeconds = 0.5f;
+    private const float FullMainRollIntervalSeconds = 1.6f / 14f;
+    private const float CompactMainRollIntervalSeconds = 0.1f;
 
     private static readonly IReadOnlyList<RouletteDelay> FullSchedule = new[]
     {
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.BriefSlowdown, 0.16f),
-        new RouletteDelay(RoulettePacingStage.BriefSlowdown, 0.24f),
-        new RouletteDelay(RoulettePacingStage.BriefSlowdown, 0.32f),
-        new RouletteDelay(RoulettePacingStage.SecondFast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.SecondFast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.SecondFast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.SecondFast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.SecondFast, 0.08f),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, FullMainRollIntervalSeconds),
         new RouletteDelay(RoulettePacingStage.FinalSlowdown, 0.14f),
         new RouletteDelay(RoulettePacingStage.FinalSlowdown, 0.22f),
         new RouletteDelay(RoulettePacingStage.FinalSlowdown, 0.32f),
@@ -58,11 +58,11 @@ internal static class RouletteTiming
 
     private static readonly IReadOnlyList<RouletteDelay> CompactSchedule = new[]
     {
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.Fast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.BriefSlowdown, 0.18f),
-        new RouletteDelay(RoulettePacingStage.SecondFast, 0.08f),
-        new RouletteDelay(RoulettePacingStage.SecondFast, 0.08f),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, CompactMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, CompactMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, CompactMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, CompactMainRollIntervalSeconds),
+        new RouletteDelay(RoulettePacingStage.ConstantRoll, CompactMainRollIntervalSeconds),
         new RouletteDelay(RoulettePacingStage.FinalSlowdown, 0.18f),
         new RouletteDelay(RoulettePacingStage.FinalSlowdown, 0.32f),
         new RouletteDelay(RoulettePacingStage.FinalSlowdown, 0.50f)

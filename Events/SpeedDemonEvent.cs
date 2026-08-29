@@ -29,11 +29,6 @@ public sealed class SpeedDemonEvent : EventBase
 
     protected override void OnStart()
     {
-        Server.SendBroadcast(
-            "<color=red><b>SPEED DEMON ACTIVATED!</b></color>",
-            8
-        );
-
         Console.WriteLine(
             $"[SCPEventSystem] Speed Demon activated: humanIntensity='{_config.Intensity}', " +
             $"scpIntensity='{_config.ScpIntensity}', staminaDrainMultiplier='{_config.StaminaDrainMultiplier}', " +

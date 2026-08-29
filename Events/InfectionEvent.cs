@@ -48,7 +48,6 @@ public sealed class InfectionEvent : EventBase
     {
         Subscribe();
         BeginInitialRoleNormalization();
-        SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
     }
 
     protected override void OnStop()
@@ -830,14 +829,6 @@ public sealed class InfectionEvent : EventBase
             !player.IsAlive &&
             player.Team == Team.Dead &&
             player.Role == RoleTypeId.Spectator;
-    }
-
-    private static void SendAnnouncement(string announcement, ushort durationSeconds)
-    {
-        if (string.IsNullOrWhiteSpace(announcement) || durationSeconds == 0)
-            return;
-
-        Server.SendBroadcast(announcement, durationSeconds);
     }
 
     private sealed class ModifiedRoleStats
