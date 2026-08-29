@@ -23,7 +23,9 @@ public sealed class EscalationEvent : EventBase
     public EscalationEvent(EscalationEventConfig? config = null)
     {
         _config = config ?? new EscalationEventConfig();
-        Disable();
+
+        if (!_config.Enabled)
+            Disable();
     }
 
     public override string Name => "Escalation";

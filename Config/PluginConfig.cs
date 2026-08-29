@@ -85,6 +85,8 @@ public class EscalationEventConfig
             "SCPs begin empowered while the surviving humans progressively gain stronger advantages."
     };
 
+    public bool Enabled { get; set; } = false;
+
     public float ScpMaxHealthMultiplier { get; set; } = 1.35f;
 
     public byte ScpDamageReductionIntensity { get; set; } = 30;
@@ -145,6 +147,8 @@ public class SpeedDemonEventConfig
         Description = "Everyone moves at extreme speed. Good luck."
     };
 
+    public bool Enabled { get; set; } = true;
+
     public byte Intensity { get; set; } = 170;
 
     public byte ScpIntensity { get; set; } = 165;
@@ -166,6 +170,8 @@ public class TimeToGambleEventConfig
             "A modular event that strips starting equipment from human players and detects interaction with one existing workstation."
     };
 
+    public bool Enabled { get; set; } = false;
+
     public MapGeneration.RoomName TargetRoomName { get; set; } = MapGeneration.RoomName.LczArmory;
 
     public int TargetWorkstationIndex { get; set; } = 0;
@@ -174,10 +180,10 @@ public class TimeToGambleEventConfig
 
     public List<GambleReward> Rewards { get; set; } = new()
     {
-        new GambleReward(ItemType.GunE11SR, "E-11 SR", "Rare", 10d),
-        new GambleReward(ItemType.Medkit, "Medkit", "Uncommon", 25d),
-        new GambleReward(ItemType.Flashlight, "Flashlight", "Common", 45d),
-        new GambleReward(ItemType.GrenadeFlash, "Flashbang", "Uncommon", 20d)
+        new GambleReward(ItemType.GunE11SR, "E-11 SR", 10d),
+        new GambleReward(ItemType.Medkit, "Medkit", 25d),
+        new GambleReward(ItemType.Flashlight, "Flashlight", 45d),
+        new GambleReward(ItemType.GrenadeFlash, "Flashbang", 20d)
     };
 }
 
@@ -191,13 +197,13 @@ public class BlackoutEventConfig
             "A round-long facility blackout with a delayed cinematic intro and randomized dark and powered periods."
     };
 
+    public bool Enabled { get; set; } = true;
+
     public float IntroStartDelaySeconds { get; set; } = 10f;
 
     public bool EnableFlickering { get; set; } = true;
 
     public int FlickerStepDurationMilliseconds { get; set; } = 225;
-
-    public int NormalShortBlackoutSeconds { get; set; } = 30;
 
     public int NormalPoweredSeconds { get; set; } = 10;
 
@@ -220,14 +226,6 @@ public class BlackoutEventConfig
     public float BlackoutFlickerMaxIntervalSeconds { get; set; } = 10f;
 
     public float BlackoutFlickerDurationSeconds { get; set; } = 0.12f;
-
-    public float PoweredFlickerMinIntervalSeconds { get; set; } = 3f;
-
-    public float PoweredFlickerMaxIntervalSeconds { get; set; } = 10f;
-
-    public float SubtleFlickerMinIntervalSeconds { get; set; } = 2.5f;
-
-    public float SubtleFlickerMaxIntervalSeconds { get; set; } = 5.5f;
 
     public float SubtleFlickerDurationSeconds { get; set; } = 0.15f;
 

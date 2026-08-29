@@ -21,6 +21,9 @@ public sealed class SpeedDemonEvent : EventBase
     public SpeedDemonEvent(SpeedDemonEventConfig? config = null)
     {
         _config = config ?? new SpeedDemonEventConfig();
+
+        if (!_config.Enabled)
+            Disable();
     }
 
     public override string Name => "Speed Demon";
