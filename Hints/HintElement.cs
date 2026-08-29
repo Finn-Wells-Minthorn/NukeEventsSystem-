@@ -9,6 +9,7 @@ internal enum HintElementId
     ServerInfo,
     EventInfo,
     Tip,
+    BottomInfo,
     ManualTestPrimary,
     ManualTestSecondary
 }

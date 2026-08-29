@@ -42,14 +42,12 @@ public sealed class InfectionEvent : EventBase
 
     public override string Name => "Infection";
 
-    public override string Description =>
-        "Plague Doctors lead an SCP-049-2 horde whose kills convert human survivors into new zombies.";
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {
         Subscribe();
         BeginInitialRoleNormalization();
-        SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
     }
 
     protected override void OnStop()
@@ -831,14 +829,6 @@ public sealed class InfectionEvent : EventBase
             !player.IsAlive &&
             player.Team == Team.Dead &&
             player.Role == RoleTypeId.Spectator;
-    }
-
-    private static void SendAnnouncement(string announcement, ushort durationSeconds)
-    {
-        if (string.IsNullOrWhiteSpace(announcement) || durationSeconds == 0)
-            return;
-
-        Server.SendBroadcast(announcement, durationSeconds);
     }
 
     private sealed class ModifiedRoleStats

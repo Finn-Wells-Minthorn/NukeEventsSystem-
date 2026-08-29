@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MyFirstPlugin.Config;
 
 namespace MyFirstPlugin.Events;
 
@@ -11,7 +12,18 @@ public abstract class EventBase
 
     public abstract string Name { get; }
 
-    public abstract string Description { get; }
+    protected virtual EventDisplayConfig? DisplayConfig => null;
+
+    private EventDisplayMetadata DisplayMetadata =>
+        EventDisplayMetadata.Resolve(DisplayConfig, Name);
+
+    public virtual string DisplayName => DisplayMetadata.Name;
+
+    public virtual string Description => DisplayMetadata.Description;
+
+    public virtual string DisplayColor => DisplayMetadata.Color;
+
+    public virtual string DisplayDescription => DisplayMetadata.Description;
 
     public bool IsEnabled { get; private set; } = true;
 

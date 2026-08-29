@@ -21,16 +21,10 @@ public class TimeToGambleEvent : EventBase
 
     public override string Name => "Time To Gamble (Development)";
 
-    public override string Description =>
-        "A modular event that strips starting equipment from human players and detects interaction with one existing workstation.";
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {
-        Server.SendBroadcast(
-            "<color=orange><b>TIME TO GAMBLE</b></color>",
-            10
-        );
-
         _machineManager.Unsubscribe();
         _machineManager.Clear();
         _rewardSpawner.Cleanup();

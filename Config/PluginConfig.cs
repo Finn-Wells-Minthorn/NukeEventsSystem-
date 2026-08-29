@@ -10,6 +10,8 @@ public class PluginConfig
 
     public EventRollConfig EventRoll { get; set; } = new();
 
+    public BottomInfoConfig BottomInfo { get; set; } = new();
+
     public BlackoutEventConfig Blackout { get; set; } = new();
 
     public TimeToGambleEventConfig TimeToGamble { get; set; } = new();
@@ -25,6 +27,14 @@ public class PluginConfig
 
 public class InfectionEventConfig
 {
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = DefaultEventDisplayNames.Infection,
+        Color = "#66FF66",
+        Description =
+            "Plague Doctors lead an SCP-049-2 horde whose kills convert human survivors into new zombies."
+    };
+
     public bool Enabled { get; set; } = true;
 
     public int TwoDoctorMinimumPlayers { get; set; } = 15;
@@ -42,15 +52,18 @@ public class InfectionEventConfig
     public float ZombieHealthMultiplier { get; set; } = 1f;
 
     public float ZombieHumeShieldMultiplier { get; set; } = 1f;
-
-    public string StartAnnouncement { get; set; } =
-        "<color=#66ff66><b>INFECTION!</b></color> Plague Doctors lead the infected. Zombies spread the infection through their kills.";
-
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 12;
 }
 
 public class JailbirdMayhemEventConfig
 {
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = DefaultEventDisplayNames.JailbirdMayhem,
+        Color = "#FFD166",
+        Description =
+            "Playable humans keep their utility loadouts but replace spawn firearms and ammunition with Jailbirds."
+    };
+
     public bool Enabled { get; set; } = true;
 
     public float SpawnProcessingDelaySeconds { get; set; } = 1f;
@@ -60,15 +73,18 @@ public class JailbirdMayhemEventConfig
     public bool RemoveConventionalFirearmAmmunition { get; set; } = true;
 
     public int JailbirdAmount { get; set; } = 1;
-
-    public string StartAnnouncement { get; set; } =
-        "<color=orange><b>JAILBIRD MAYHEM!</b></color> Human firearms have been replaced with Jailbirds.";
-
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
 }
 
 public class EscalationEventConfig
 {
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = DefaultEventDisplayNames.Escalation,
+        Color = "#FF8C42",
+        Description =
+            "SCPs begin empowered while the surviving humans progressively gain stronger advantages."
+    };
+
     public float ScpMaxHealthMultiplier { get; set; } = 1.35f;
 
     public byte ScpDamageReductionIntensity { get; set; } = 30;
@@ -105,9 +121,6 @@ public class EscalationEventConfig
 
     public float RespawnCatchUpDelaySeconds { get; set; } = 1f;
 
-    public string StartAnnouncement { get; set; } =
-        "<color=red><b>ESCALATION ACTIVATED!</b></color> SCPs begin empowered. Humans will grow stronger over time.";
-
     public string StageOneAnnouncement { get; set; } =
         "<color=yellow><b>ESCALATION STAGE 1</b></color> Human medical supplies deployed.";
 
@@ -120,13 +133,18 @@ public class EscalationEventConfig
     public string StageFourAnnouncement { get; set; } =
         "<color=red><b>ESCALATION STAGE 4</b></color> Human movement speed doubled.";
 
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
-
     public ushort StageAnnouncementDurationSeconds { get; set; } = 8;
 }
 
 public class SpeedDemonEventConfig
 {
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = DefaultEventDisplayNames.SpeedDemon,
+        Color = "#FF4D4D",
+        Description = "Everyone moves at extreme speed. Good luck."
+    };
+
     public byte Intensity { get; set; } = 170;
 
     public byte ScpIntensity { get; set; } = 165;
@@ -140,6 +158,14 @@ public class SpeedDemonEventConfig
 
 public class TimeToGambleEventConfig
 {
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = DefaultEventDisplayNames.TimeToGamble,
+        Color = "#C77DFF",
+        Description =
+            "A modular event that strips starting equipment from human players and detects interaction with one existing workstation."
+    };
+
     public MapGeneration.RoomName TargetRoomName { get; set; } = MapGeneration.RoomName.LczArmory;
 
     public int TargetWorkstationIndex { get; set; } = 0;
@@ -157,6 +183,14 @@ public class TimeToGambleEventConfig
 
 public class BlackoutEventConfig
 {
+    public EventDisplayConfig Display { get; set; } = new()
+    {
+        Name = DefaultEventDisplayNames.Blackout,
+        Color = "#6699FF",
+        Description =
+            "A round-long facility blackout with a delayed cinematic intro and randomized dark and powered periods."
+    };
+
     public float IntroStartDelaySeconds { get; set; } = 10f;
 
     public bool EnableFlickering { get; set; } = true;
@@ -214,16 +248,4 @@ public class BlackoutEventConfig
     public bool CassiePlayBackgroundAudio { get; set; } = true;
 
     public float CassieGlitchIntensity { get; set; } = 1f;
-
-    public string StartAnnouncement { get; set; } = "<color=red><b>BLACKOUT EVENT ACTIVATED!</b></color>";
-
-    public string PreBlackoutWarning { get; set; } = "<color=red><b>FACILITY POWER FAILURE DETECTED</b></color>";
-
-    public string EndAnnouncement { get; set; } = "<color=green><b>Power restored. The blackout has ended.</b></color>";
-
-    public ushort StartAnnouncementDurationSeconds { get; set; } = 10;
-
-    public ushort PreBlackoutWarningDurationSeconds { get; set; } = 6;
-
-    public ushort EndAnnouncementDurationSeconds { get; set; } = 5;
 }

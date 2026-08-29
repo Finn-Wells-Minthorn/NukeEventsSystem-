@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using LabApi.Features.Wrappers;
 using MEC;
+using MyFirstPlugin.Config;
+using MyFirstPlugin.Hints;
 
 namespace MyFirstPlugin.Events;
 
@@ -12,6 +14,10 @@ public sealed class EventRollPresenter
     private CoroutineHandle _rollHandle;
     private bool _isCancelled;
     private bool _isRunning;
+    private bool _isVisible;
+    private EventBase? _displayedEvent;
+
+    private const string HeaderText = "Selecting Event...";
 
     public EventRollPresenter()
         : this(new EventRollConfig())
@@ -25,7 +31,51 @@ public sealed class EventRollPresenter
 
     public bool IsRunning => _isRunning && _rollHandle.IsValid;
 
-    public void Start(EventBase selectedEvent, IReadOnlyList<EventBase> enabledEvents, Action<EventBase>? onCompleted)
+    public void ShowHeader()
+    {
+        _isVisible = true;
+        _displayedEvent = null;
+
+        foreach (Player player in Player.ReadyList)
+            ShowCurrent(player);
+    }
+
+    public void ShowCurrent(Player player)
+    {
+        if (!_isVisible)
+            return;
+
+        HintManager? manager = global::MyFirstPlugin.MyFirstPlugin.Hints;
+        if (manager == null)
+            return;
+
+        manager.Set(
+            player,
+            HintElementId.LobbyEventHeader,
+            HeaderText,
+            _config.HeaderVerticalPosition);
+
+        if (_displayedEvent == null)
+        {
+            manager.Remove(player, HintElementId.LobbyEventName);
+            return;
+        }
+
+        manager.Set(
+            player,
+            HintElementId.LobbyEventName,
+            HintUiFormatter.FormatEventName(
+                _displayedEvent.DisplayName,
+                _displayedEvent.DisplayColor,
+                bold: true),
+            _config.EventNameVerticalPosition);
+    }
+
+    public void Start(
+        EventBase selectedEvent,
+        IReadOnlyList<EventBase> enabledEvents,
+        Func<float> getRemainingCountdownSeconds,
+        Action<EventBase>? onCompleted)
     {
         if (selectedEvent == null)
             throw new ArgumentNullException(nameof(selectedEvent));
@@ -33,32 +83,43 @@ public sealed class EventRollPresenter
         if (enabledEvents == null)
             throw new ArgumentNullException(nameof(enabledEvents));
 
-        Cancel();
+        if (getRemainingCountdownSeconds == null)
+            throw new ArgumentNullException(nameof(getRemainingCountdownSeconds));
 
-        List<string> eventNames = enabledEvents
+        CancelRoll();
+
+        List<EventBase> eventOptions = enabledEvents
             .Where(x => x != null && x.IsEnabled && !string.IsNullOrWhiteSpace(x.Name))
-            .Select(x => x.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
             .ToList();
 
-        if (eventNames.Count == 0)
+        if (eventOptions.Count == 0)
         {
             _isRunning = false;
+            ShowEvent(selectedEvent);
             onCompleted?.Invoke(selectedEvent);
             return;
         }
 
-        if (!eventNames.Contains(selectedEvent.Name, StringComparer.OrdinalIgnoreCase))
+        if (!eventOptions.Any(x => string.Equals(x.Name, selectedEvent.Name, StringComparison.OrdinalIgnoreCase)))
         {
-            eventNames.Add(selectedEvent.Name);
+            eventOptions.Add(selectedEvent);
         }
 
         _isCancelled = false;
         _isRunning = true;
-        _rollHandle = Timing.RunCoroutine(RunRoll(selectedEvent, eventNames, onCompleted));
+        _rollHandle = Timing.RunCoroutine(
+            RunRoll(selectedEvent, eventOptions, getRemainingCountdownSeconds, onCompleted));
     }
 
     public void Cancel()
+    {
+        CancelRoll();
+        ClearDisplay();
+    }
+
+    private void CancelRoll()
     {
         _isCancelled = true;
 
@@ -69,61 +130,47 @@ public sealed class EventRollPresenter
         _isRunning = false;
     }
 
-    private IEnumerator<float> RunRoll(EventBase selectedEvent, List<string> eventNames, Action<EventBase>? onCompleted)
+    private IEnumerator<float> RunRoll(
+        EventBase selectedEvent,
+        List<EventBase> eventOptions,
+        Func<float> getRemainingCountdownSeconds,
+        Action<EventBase>? onCompleted)
     {
         try
         {
             if (_isCancelled)
                 yield break;
 
-            int winnerIndex = eventNames.FindIndex(x => string.Equals(x, selectedEvent.Name, StringComparison.OrdinalIgnoreCase));
-            if (winnerIndex < 0)
-                winnerIndex = 0;
+            float remainingCountdownSeconds = Math.Max(0f, getRemainingCountdownSeconds());
+            float availableAnimationSeconds =
+                RouletteTiming.GetAvailableAnimationSeconds(remainingCountdownSeconds);
 
-            int currentIndex = 0;
-            float interval = Math.Max(0.04f, _config.InitialIntervalSeconds);
-            int stepCount = Math.Max(10, _config.RollIterationCount);
+            RouletteAnimationPlan<EventBase> plan = RouletteAnimationPlan<EventBase>.Create(
+                selectedEvent,
+                eventOptions,
+                _config.TotalDurationSeconds,
+                availableAnimationSeconds,
+                EventIdentityComparer.Instance);
 
-            for (int i = 0; i < stepCount && !_isCancelled; i++)
+            foreach (RouletteFrame<EventBase> frame in plan.Frames)
             {
-                if (i >= Math.Max(5, stepCount - 6))
+                if (_isCancelled ||
+                    !RouletteTiming.CanWaitBeforeCutoff(
+                        getRemainingCountdownSeconds(),
+                        frame.Delay.Seconds))
                 {
-                    currentIndex = winnerIndex;
-                }
-                else
-                {
-                    currentIndex = (currentIndex + 1) % eventNames.Count;
+                    break;
                 }
 
-                Server.SendBroadcast(eventNames[currentIndex], 1);
-                yield return Timing.WaitForSeconds(interval);
-
-                if (i < stepCount / 2)
-                {
-                    interval = Math.Min(_config.MaxIntervalSeconds, interval + 0.025f);
-                }
-                else
-                {
-                    interval = Math.Min(_config.MaxIntervalSeconds, interval + 0.05f);
-                }
+                ShowEvent(frame.Value);
+                yield return Timing.WaitForSeconds(frame.Delay.Seconds);
             }
 
             if (_isCancelled)
                 yield break;
 
-            Server.SendBroadcast("EVENT SELECTED", 2);
-            yield return Timing.WaitForSeconds(0.2f);
-
-            if (_isCancelled)
-                yield break;
-
-            Server.SendBroadcast(selectedEvent.Name, _config.FinalResultDisplaySeconds);
-            yield return Timing.WaitForSeconds(Math.Max(0.25f, _config.FinalResultDisplaySeconds / 3f));
-
-            if (_isCancelled)
-                yield break;
-
-            onCompleted?.Invoke(selectedEvent);
+            ShowEvent(plan.SelectedWinner);
+            onCompleted?.Invoke(plan.SelectedWinner);
         }
         finally
         {
@@ -132,15 +179,48 @@ public sealed class EventRollPresenter
             _isCancelled = false;
         }
     }
-}
 
-public class EventRollConfig
-{
-    public float InitialIntervalSeconds { get; set; } = 0.06f;
+    private void ShowEvent(EventBase eventInstance)
+    {
+        _isVisible = true;
+        _displayedEvent = eventInstance;
 
-    public float MaxIntervalSeconds { get; set; } = 0.5f;
+        foreach (Player player in Player.ReadyList)
+            ShowCurrent(player);
+    }
 
-    public ushort FinalResultDisplaySeconds { get; set; } = 1;
+    private void ClearDisplay()
+    {
+        _isVisible = false;
+        _displayedEvent = null;
 
-    public int RollIterationCount { get; set; } = 18;
+        HintManager? manager = global::MyFirstPlugin.MyFirstPlugin.Hints;
+        if (manager == null)
+            return;
+
+        foreach (Player player in Player.List)
+        {
+            manager.Remove(player, HintElementId.LobbyEventName);
+            manager.Remove(player, HintElementId.LobbyEventHeader);
+        }
+    }
+
+    private sealed class EventIdentityComparer : IEqualityComparer<EventBase>
+    {
+        public static readonly EventIdentityComparer Instance = new();
+
+        public bool Equals(EventBase? first, EventBase? second)
+        {
+            if (ReferenceEquals(first, second))
+                return true;
+
+            if (first == null || second == null)
+                return false;
+
+            return string.Equals(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public int GetHashCode(EventBase eventInstance) =>
+            StringComparer.OrdinalIgnoreCase.GetHashCode(eventInstance.Name);
+    }
 }

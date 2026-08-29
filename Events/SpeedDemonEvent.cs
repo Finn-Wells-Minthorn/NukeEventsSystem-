@@ -25,15 +25,10 @@ public sealed class SpeedDemonEvent : EventBase
 
     public override string Name => "Speed Demon";
 
-    public override string Description => "Everyone moves at extreme speed. Good luck.";
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {
-        Server.SendBroadcast(
-            "<color=red><b>SPEED DEMON ACTIVATED!</b></color>",
-            8
-        );
-
         Console.WriteLine(
             $"[SCPEventSystem] Speed Demon activated: humanIntensity='{_config.Intensity}', " +
             $"scpIntensity='{_config.ScpIntensity}', staminaDrainMultiplier='{_config.StaminaDrainMultiplier}', " +

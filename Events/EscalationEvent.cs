@@ -28,14 +28,12 @@ public sealed class EscalationEvent : EventBase
 
     public override string Name => "Escalation";
 
-    public override string Description =>
-        "SCPs begin empowered while the surviving humans progressively gain stronger advantages.";
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {
         _currentStage = 0;
         Subscribe();
-        SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
 
         foreach (Player player in Player.List)
             ApplyCurrentProgressionSafely(player, true);

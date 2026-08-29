@@ -38,14 +38,12 @@ public sealed class JailbirdMayhemEvent : EventBase
 
     public override string Name => "Jailbird Mayhem";
 
-    public override string Description =>
-        "Playable humans keep their utility loadouts but replace spawn firearms and ammunition with Jailbirds.";
+    protected override EventDisplayConfig? DisplayConfig => _config.Display;
 
     protected override void OnStart()
     {
         Subscribe();
         ScheduleInitialPlayerSweep();
-        SendAnnouncement(_config.StartAnnouncement, _config.StartAnnouncementDurationSeconds);
 
         Console.WriteLine(
             $"[SCPEventSystem] Jailbird Mayhem activated: delay='{_config.SpawnProcessingDelaySeconds}', " +
@@ -397,14 +395,6 @@ public sealed class JailbirdMayhemEvent : EventBase
         }
 
         _pendingProcessing.Clear();
-    }
-
-    private static void SendAnnouncement(string announcement, ushort durationSeconds)
-    {
-        if (string.IsNullOrWhiteSpace(announcement) || durationSeconds == 0)
-            return;
-
-        Server.SendBroadcast(announcement, durationSeconds);
     }
 
     private sealed class PlayerLifeState

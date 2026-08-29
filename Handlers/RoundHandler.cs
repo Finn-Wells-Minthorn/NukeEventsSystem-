@@ -1,19 +1,24 @@
+using System;
 using System.Collections.Generic;
 using GameCore;
+using LabApi.Events.Arguments.PlayerEvents;
 using LabApi.Events.Arguments.ServerEvents;
 using LabApi.Events.CustomHandlers;
 using LabApi.Features.Console;
 using MEC;
 using MyFirstPlugin.Config;
 using MyFirstPlugin.Events;
+using MyFirstPlugin.Hints;
 
 namespace MyFirstPlugin.Handlers;
 
 public class RoundHandler : CustomEventsHandler
 {
     private readonly EventSelector _eventSelector = new();
+    private BottomInfoPresenter? _bottomInfoPresenter;
     private EventRollPresenter? _eventRollPresenter;
-    private EventStartSequencePresenter? _eventStartSequencePresenter;
+    private CoroutineHandle _serverInfoRestoreHandle;
+    private int _serverInfoRestoreGeneration;
     private CoroutineHandle _countdownWatcherHandle;
     private EventBase? _pendingEvent;
     private bool _isActive;
@@ -22,14 +27,21 @@ public class RoundHandler : CustomEventsHandler
         _eventRollPresenter ??= new EventRollPresenter(
             global::MyFirstPlugin.MyFirstPlugin.Instance?.Config?.EventRoll ?? new EventRollConfig());
 
-    private EventStartSequencePresenter EventStartSequencePresenter =>
-        _eventStartSequencePresenter ??= new EventStartSequencePresenter();
+    private BottomInfoPresenter BottomInfoPresenter =>
+        _bottomInfoPresenter ??= new BottomInfoPresenter(
+            global::MyFirstPlugin.MyFirstPlugin.Instance?.Config?.BottomInfo ?? new BottomInfoConfig());
 
     public void Activate()
     {
+        CancelServerInfoRestore();
         CancelPendingSelection();
+        _bottomInfoPresenter?.Stop();
         EventManager.EventStarting -= OnEventStarting;
         EventManager.EventStarting += OnEventStarting;
+        EventManager.EventStarted -= OnEventStarted;
+        EventManager.EventStarted += OnEventStarted;
+        EventManager.EventStopped -= OnEventStopped;
+        EventManager.EventStopped += OnEventStopped;
         _isActive = true;
     }
 
@@ -37,13 +49,16 @@ public class RoundHandler : CustomEventsHandler
     {
         _isActive = false;
         EventManager.EventStarting -= OnEventStarting;
+        EventManager.EventStarted -= OnEventStarted;
+        EventManager.EventStopped -= OnEventStopped;
+        CancelServerInfoRestore();
         CancelPendingSelection();
+        _bottomInfoPresenter?.Stop();
     }
 
     private void CancelPendingSelection()
     {
         CancelCountdownWatcher();
-        _eventStartSequencePresenter?.Cancel();
         _eventRollPresenter?.Cancel();
         _pendingEvent = null;
     }
@@ -56,6 +71,42 @@ public class RoundHandler : CustomEventsHandler
         _countdownWatcherHandle = default;
     }
 
+    private void ScheduleServerInfoRestore()
+    {
+        CancelServerInfoRestore();
+        int generation = ++_serverInfoRestoreGeneration;
+        _serverInfoRestoreHandle = Timing.RunCoroutine(
+            RestoreServerInfoAfterLifecycleCleanup(generation));
+    }
+
+    private void CancelServerInfoRestore()
+    {
+        ++_serverInfoRestoreGeneration;
+
+        if (_serverInfoRestoreHandle.IsValid)
+            Timing.KillCoroutines(_serverInfoRestoreHandle);
+
+        _serverInfoRestoreHandle = default;
+    }
+
+    private IEnumerator<float> RestoreServerInfoAfterLifecycleCleanup(int generation)
+    {
+        try
+        {
+            // HintManager clears all owned elements on round/lobby lifecycle
+            // events. Restore the persistent server entry after that cleanup.
+            yield return Timing.WaitForSeconds(0.1f);
+
+            if (_isActive && generation == _serverInfoRestoreGeneration)
+                BottomInfoPresenter.ShowServerInfo();
+        }
+        finally
+        {
+            if (generation == _serverInfoRestoreGeneration)
+                _serverInfoRestoreHandle = default;
+        }
+    }
+
     private void OnEventStarting(EventBase eventInstance)
     {
         if (!_isActive)
@@ -64,12 +115,26 @@ public class RoundHandler : CustomEventsHandler
         CancelPendingSelection();
     }
 
+    private void OnEventStarted(EventBase eventInstance)
+    {
+        if (_isActive)
+            BottomInfoPresenter.ShowActiveEvent(eventInstance);
+    }
+
+    private void OnEventStopped(EventBase eventInstance)
+    {
+        if (_isActive)
+            BottomInfoPresenter.ShowServerInfo();
+    }
+
     public override void OnServerWaitingForPlayers()
     {
         if (!_isActive)
             return;
 
         Logger.Info("[SCPEventSystem] Waiting for players.");
+        _bottomInfoPresenter?.Stop();
+        ScheduleServerInfoRestore();
         CancelPendingSelection();
         _countdownWatcherHandle = Timing.RunCoroutine(WatchForCountdown());
     }
@@ -134,22 +199,18 @@ public class RoundHandler : CustomEventsHandler
             return selectedEvent;
         }
 
-        EventStartSequencePresenter.Start(() =>
-        {
-            if (!_isActive || _pendingEvent != selectedEvent || EventManager.CurrentEvent != null)
-                return;
+        EventRollPresenter.ShowHeader();
+        EventRollPresenter.Start(
+            selectedEvent,
+            enabledEvents,
+            GetRemainingPreRoundSeconds,
+            presentedEvent =>
+            {
+                if (!_isActive || _pendingEvent != presentedEvent || EventManager.CurrentEvent != null)
+                    return;
 
-            EventRollPresenter.Start(
-                selectedEvent,
-                enabledEvents,
-                presentedEvent =>
-                {
-                    if (!_isActive || _pendingEvent != presentedEvent || EventManager.CurrentEvent != null)
-                        return;
-
-                    Logger.Info($"[SCPEventSystem] Event roll completed: {presentedEvent.Name}");
-                });
-        });
+                Logger.Info($"[SCPEventSystem] Event roll completed: {presentedEvent.Name}");
+            });
 
         return selectedEvent;
     }
@@ -159,6 +220,7 @@ public class RoundHandler : CustomEventsHandler
         if (!_isActive)
             return;
 
+        CancelServerInfoRestore();
         CancelCountdownWatcher();
 
         if (!global::MyFirstPlugin.MyFirstPlugin.AutomaticEventsEnabled || EventManager.CurrentEvent != null)
@@ -179,9 +241,10 @@ public class RoundHandler : CustomEventsHandler
 
         Logger.Info("[SCPEventSystem] Round started.");
 
+        CancelServerInfoRestore();
         CancelCountdownWatcher();
-        _eventStartSequencePresenter?.Cancel();
         _eventRollPresenter?.Cancel();
+        BottomInfoPresenter.ShowCurrentEvent();
 
         if (!global::MyFirstPlugin.MyFirstPlugin.AutomaticEventsEnabled)
         {
@@ -209,6 +272,7 @@ public class RoundHandler : CustomEventsHandler
         EventBase? launchedEvent = EventManager.StartEvent(selectedEvent);
         if (launchedEvent == null)
         {
+            BottomInfoPresenter.ShowCurrentEvent();
             Logger.Warn($"[SCPEventSystem] Failed to start selected event: {selectedEvent.Name}");
             return;
         }
@@ -219,14 +283,33 @@ public class RoundHandler : CustomEventsHandler
     public override void OnServerRoundEnded(RoundEndedEventArgs ev)
     {
         Logger.Info("[SCPEventSystem] Round ended.");
+        _bottomInfoPresenter?.Stop();
         CancelPendingSelection();
         EventManager.StopCurrentEvent();
+        ScheduleServerInfoRestore();
     }
 
     public override void OnServerRoundRestarted()
     {
         Logger.Info("[SCPEventSystem] Round restarting.");
+        _bottomInfoPresenter?.Stop();
         CancelPendingSelection();
         EventManager.StopCurrentEvent();
+        ScheduleServerInfoRestore();
+    }
+
+    public override void OnPlayerJoined(PlayerJoinedEventArgs ev)
+    {
+        if (!_isActive)
+            return;
+
+        _eventRollPresenter?.ShowCurrent(ev.Player);
+        _bottomInfoPresenter?.ShowCurrent(ev.Player);
+    }
+
+    private static float GetRemainingPreRoundSeconds()
+    {
+        RoundStart? roundStart = RoundStart.singleton;
+        return roundStart == null ? 0f : Math.Max(0f, roundStart.Timer);
     }
 }
