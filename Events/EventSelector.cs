@@ -44,10 +44,12 @@ public sealed class EventSelector
     private readonly Func<double> _nextRoll;
 
     public EventSelector()
-        : this(
-            new RandomEventSelectionStrategy(),
-            global::MyFirstPlugin.MyFirstPlugin.Instance?.Config?.NormalRound ?? new NormalRoundConfig(),
-            new Random().NextDouble)
+        : this(new NormalRoundConfig())
+    {
+    }
+
+    public EventSelector(NormalRoundConfig normalRound)
+        : this(new RandomEventSelectionStrategy(), normalRound, new Random().NextDouble)
     {
     }
 
