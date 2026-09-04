@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MyFirstPlugin.Config;
 
 namespace MyFirstPlugin.Events;
 
@@ -39,15 +40,27 @@ public sealed class RandomEventSelectionStrategy : IEventSelectionStrategy
 public sealed class EventSelector
 {
     private readonly IEventSelectionStrategy _strategy;
+    private readonly NormalRoundConfig _normalRound;
+    private readonly Func<double> _nextRoll;
 
     public EventSelector()
-        : this(new RandomEventSelectionStrategy())
+        : this(new NormalRoundConfig())
     {
     }
 
-    public EventSelector(IEventSelectionStrategy strategy)
+    public EventSelector(NormalRoundConfig normalRound)
+        : this(new RandomEventSelectionStrategy(), normalRound, new Random().NextDouble)
+    {
+    }
+
+    public EventSelector(
+        IEventSelectionStrategy strategy,
+        NormalRoundConfig normalRound,
+        Func<double>? nextRoll = null)
     {
         _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
+        _normalRound = normalRound ?? throw new ArgumentNullException(nameof(normalRound));
+        _nextRoll = nextRoll ?? new Random().NextDouble;
     }
 
     public IReadOnlyList<EventBase> GetAvailableEvents()
@@ -57,8 +70,35 @@ public sealed class EventSelector
             .ToList();
     }
 
-    public EventBase? Select()
+    public IReadOnlyList<EventSelectionOption> GetRouletteOptions()
     {
-        return _strategy.Select(GetAvailableEvents());
+        List<EventSelectionOption> options = GetAvailableEvents()
+            .Select(EventSelectionOption.ForEvent)
+            .ToList();
+
+        if (_normalRound.Enabled)
+            options.Add(EventSelectionOption.NormalRound(_normalRound));
+
+        return options;
+    }
+
+    public EventSelectionOption? Select()
+    {
+        IReadOnlyList<EventBase> availableEvents = GetAvailableEvents();
+
+        if (_normalRound.Enabled)
+        {
+            if (availableEvents.Count == 0)
+                return EventSelectionOption.NormalRound(_normalRound);
+
+            double chance = _normalRound.GetClampedChancePercent();
+            if (chance >= 100d || (chance > 0d && _nextRoll() * 100d < chance))
+                return EventSelectionOption.NormalRound(_normalRound);
+        }
+
+        EventBase? selectedEvent = _strategy.Select(availableEvents);
+        return selectedEvent == null
+            ? null
+            : EventSelectionOption.ForEvent(selectedEvent);
     }
 }
