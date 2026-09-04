@@ -12,6 +12,8 @@ public class PluginConfig
 
     public BottomInfoConfig BottomInfo { get; set; } = new();
 
+    public NormalRoundConfig NormalRound { get; set; } = new();
+
     public BlackoutEventConfig Blackout { get; set; } = new();
 
     public TimeToGambleEventConfig TimeToGamble { get; set; } = new();
