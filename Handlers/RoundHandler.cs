@@ -294,7 +294,7 @@ public class RoundHandler : CustomEventsHandler
             return;
         }
 
-        EventBase? launchedEvent = EventManager.StartEvent(selectedEvent);
+        EventBase? launchedEvent = EventSelectionActivator.Start(selectedOption);
         if (launchedEvent == null)
         {
             BottomInfoPresenter.ShowCurrentEvent();
