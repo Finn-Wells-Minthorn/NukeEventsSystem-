@@ -16,6 +16,12 @@
     <Compile Include="..\..\Config\EventDisplayConfig.cs" Link="Config\EventDisplayConfig.cs" />
     <Compile Include="..\..\Config\BottomInfoConfig.cs" Link="Config\BottomInfoConfig.cs" />
     <Compile Include="..\..\Config\EventRollConfig.cs" Link="Config\EventRollConfig.cs" />
+    <Compile Include="..\..\Config\NormalRoundConfig.cs" Link="Config\NormalRoundConfig.cs" />
+    <Compile Include="..\..\Events\EventBase.cs" Link="Events\EventBase.cs" />
+    <Compile Include="..\..\Events\EventManager.cs" Link="Events\EventManager.cs" />
+    <Compile Include="..\..\Events\EventSelectionOption.cs" Link="Events\EventSelectionOption.cs" />
+    <Compile Include="..\..\Events\EventSelectionActivator.cs" Link="Events\EventSelectionActivator.cs" />
+    <Compile Include="..\..\Events\EventSelector.cs" Link="Events\EventSelector.cs" />
     <Compile Include="..\..\Events\EventDisplayMetadata.cs" Link="Events\EventDisplayMetadata.cs" />
     <Compile Include="..\..\Events\RouletteTiming.cs" Link="Events\RouletteTiming.cs" />
   </ItemGroup>
