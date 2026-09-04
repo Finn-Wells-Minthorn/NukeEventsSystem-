@@ -14,7 +14,7 @@ namespace MyFirstPlugin.Handlers;
 
 public class RoundHandler : CustomEventsHandler
 {
-    private readonly EventSelector _eventSelector = new();
+    private EventSelector? _eventSelector;
     private BottomInfoPresenter? _bottomInfoPresenter;
     private EventRollPresenter? _eventRollPresenter;
     private CoroutineHandle _serverInfoRestoreHandle;
@@ -22,6 +22,10 @@ public class RoundHandler : CustomEventsHandler
     private CoroutineHandle _countdownWatcherHandle;
     private EventSelectionOption? _pendingSelection;
     private bool _isActive;
+
+    private EventSelector EventSelector =>
+        _eventSelector ??= new EventSelector(
+            global::MyFirstPlugin.MyFirstPlugin.Instance?.Config?.NormalRound ?? new NormalRoundConfig());
 
     private EventRollPresenter EventRollPresenter =>
         _eventRollPresenter ??= new EventRollPresenter(
@@ -35,6 +39,8 @@ public class RoundHandler : CustomEventsHandler
     {
         CancelServerInfoRestore();
         CancelPendingSelection();
+        _eventSelector = new EventSelector(
+            global::MyFirstPlugin.MyFirstPlugin.Instance?.Config?.NormalRound ?? new NormalRoundConfig());
         _bottomInfoPresenter?.Stop();
         EventManager.EventStarting -= OnEventStarting;
         EventManager.EventStarting += OnEventStarting;
@@ -54,6 +60,7 @@ public class RoundHandler : CustomEventsHandler
         CancelServerInfoRestore();
         CancelPendingSelection();
         _bottomInfoPresenter?.Stop();
+        _eventSelector = null;
     }
 
     private void CancelPendingSelection()
@@ -182,7 +189,7 @@ public class RoundHandler : CustomEventsHandler
 
         _pendingSelection = null;
 
-        EventSelectionOption? selectedOption = _eventSelector.Select();
+        EventSelectionOption? selectedOption = EventSelector.Select();
         if (selectedOption == null)
         {
             Logger.Warn("[SCPEventSystem] No enabled events are currently available.");
@@ -195,7 +202,7 @@ public class RoundHandler : CustomEventsHandler
         if (!showPresentation)
             return selectedOption;
 
-        IReadOnlyList<EventSelectionOption> availableOptions = _eventSelector.GetRouletteOptions();
+        IReadOnlyList<EventSelectionOption> availableOptions = EventSelector.GetRouletteOptions();
         if (availableOptions.Count == 0)
         {
             Logger.Warn("[SCPEventSystem] No enabled events are currently available for the roll.");
