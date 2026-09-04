@@ -199,7 +199,7 @@ public class RoundHandler : CustomEventsHandler
         if (availableOptions.Count == 0)
         {
             Logger.Warn("[SCPEventSystem] No enabled events are currently available for the roll.");
-            return selectedEvent;
+            return selectedOption;
         }
 
         EventRollPresenter.ShowHeader();
@@ -215,7 +215,7 @@ public class RoundHandler : CustomEventsHandler
                 Logger.Info($"[SCPEventSystem] Event roll completed: {presentedOption.DisplayName}");
             });
 
-        return selectedEvent;
+        return selectedOption;
     }
 
     public override void OnServerRoundStarting(RoundStartingEventArgs ev)
