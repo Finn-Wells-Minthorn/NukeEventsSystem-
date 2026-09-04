@@ -20,7 +20,7 @@ public class RoundHandler : CustomEventsHandler
     private CoroutineHandle _serverInfoRestoreHandle;
     private int _serverInfoRestoreGeneration;
     private CoroutineHandle _countdownWatcherHandle;
-    private EventBase? _pendingEvent;
+    private EventSelectionOption? _pendingSelection;
     private bool _isActive;
 
     private EventRollPresenter EventRollPresenter =>
@@ -60,7 +60,7 @@ public class RoundHandler : CustomEventsHandler
     {
         CancelCountdownWatcher();
         _eventRollPresenter?.Cancel();
-        _pendingEvent = null;
+        _pendingSelection = null;
     }
 
     private void CancelCountdownWatcher()
@@ -166,7 +166,7 @@ public class RoundHandler : CustomEventsHandler
         }
     }
 
-    private EventBase? SelectPendingEvent(bool showPresentation)
+    private EventSelectionOption? SelectPendingEvent(bool showPresentation)
     {
         if (!_isActive || !global::MyFirstPlugin.MyFirstPlugin.AutomaticEventsEnabled)
             return null;
@@ -174,26 +174,29 @@ public class RoundHandler : CustomEventsHandler
         if (EventManager.CurrentEvent != null)
             return null;
 
-        if (_pendingEvent != null && _pendingEvent.IsEnabled)
-            return _pendingEvent;
+        if (_pendingSelection != null &&
+            (_pendingSelection.IsNormalRound || _pendingSelection.Event?.IsEnabled == true))
+        {
+            return _pendingSelection;
+        }
 
-        _pendingEvent = null;
+        _pendingSelection = null;
 
-        EventBase? selectedEvent = _eventSelector.Select();
-        if (selectedEvent == null)
+        EventSelectionOption? selectedOption = _eventSelector.Select();
+        if (selectedOption == null)
         {
             Logger.Warn("[SCPEventSystem] No enabled events are currently available.");
             return null;
         }
 
-        _pendingEvent = selectedEvent;
-        Logger.Info($"[SCPEventSystem] Event selected for roll: {selectedEvent.Name}");
+        _pendingSelection = selectedOption;
+        Logger.Info($"[SCPEventSystem] Selection chosen for roll: {selectedOption.DisplayName}");
 
         if (!showPresentation)
-            return selectedEvent;
+            return selectedOption;
 
-        IReadOnlyList<EventBase> enabledEvents = _eventSelector.GetAvailableEvents();
-        if (enabledEvents.Count == 0)
+        IReadOnlyList<EventSelectionOption> availableOptions = _eventSelector.GetRouletteOptions();
+        if (availableOptions.Count == 0)
         {
             Logger.Warn("[SCPEventSystem] No enabled events are currently available for the roll.");
             return selectedEvent;
@@ -201,15 +204,15 @@ public class RoundHandler : CustomEventsHandler
 
         EventRollPresenter.ShowHeader();
         EventRollPresenter.Start(
-            selectedEvent,
-            enabledEvents,
+            selectedOption,
+            availableOptions,
             GetRemainingPreRoundSeconds,
-            presentedEvent =>
+            presentedOption =>
             {
-                if (!_isActive || _pendingEvent != presentedEvent || EventManager.CurrentEvent != null)
+                if (!_isActive || _pendingSelection != presentedOption || EventManager.CurrentEvent != null)
                     return;
 
-                Logger.Info($"[SCPEventSystem] Event roll completed: {presentedEvent.Name}");
+                Logger.Info($"[SCPEventSystem] Event roll completed: {presentedOption.DisplayName}");
             });
 
         return selectedEvent;
@@ -248,24 +251,39 @@ public class RoundHandler : CustomEventsHandler
 
         if (!global::MyFirstPlugin.MyFirstPlugin.AutomaticEventsEnabled)
         {
-            _pendingEvent = null;
+            _pendingSelection = null;
             Logger.Info("[SCPEventSystem] Automatic events are disabled; skipping auto-selection.");
             return;
         }
 
         if (EventManager.CurrentEvent != null)
         {
-            _pendingEvent = null;
+            _pendingSelection = null;
             Logger.Info("[SCPEventSystem] An event is already active for this round; skipping auto-selection.");
             return;
         }
 
-        EventBase? selectedEvent = _pendingEvent;
-        _pendingEvent = null;
+        EventSelectionOption? selectedOption = _pendingSelection;
+        _pendingSelection = null;
 
+        if (selectedOption == null)
+        {
+            Logger.Warn("[SCPEventSystem] No pending selection was available when the round started.");
+            return;
+        }
+
+        if (selectedOption.IsNormalRound)
+        {
+            BottomInfoPresenter.ShowServerInfo();
+            Logger.Info("[SCPEventSystem] Normal round selected; no event will be started.");
+            return;
+        }
+
+        EventBase? selectedEvent = selectedOption.Event;
         if (selectedEvent == null)
         {
-            Logger.Warn("[SCPEventSystem] No pending event was available when the round started.");
+            BottomInfoPresenter.ShowCurrentEvent();
+            Logger.Warn("[SCPEventSystem] Selected outcome did not contain an event.");
             return;
         }
 
