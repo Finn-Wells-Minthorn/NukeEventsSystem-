@@ -16,5 +16,5 @@ internal static class DefaultEventDisplayNames
     public const string Escalation = "escalation";
     public const string SpeedDemon = "speed demon";
     public const string TimeToGamble = "time to gamble";
-    public const string Blackout = "blackout event";
+    public const string Blackout = "blackout";
 }
