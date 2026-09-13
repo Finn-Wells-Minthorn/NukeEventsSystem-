@@ -8,7 +8,7 @@ public sealed class NormalRoundConfig
 
     public EventDisplayConfig Display { get; set; } = new()
     {
-        Name = "normal round",
+        Name = "Vanilla",
         Color = "#D9F2FF",
         Description = "No special event will run this round."
     };
