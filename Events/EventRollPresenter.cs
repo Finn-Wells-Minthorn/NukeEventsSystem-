@@ -15,7 +15,7 @@ public sealed class EventRollPresenter
     private bool _isCancelled;
     private bool _isRunning;
     private bool _isVisible;
-    private EventBase? _displayedEvent;
+    private EventSelectionOption? _displayedOption;
 
     private const string HeaderText = "selecting event";
 
@@ -34,7 +34,7 @@ public sealed class EventRollPresenter
     public void ShowHeader()
     {
         _isVisible = true;
-        _displayedEvent = null;
+        _displayedOption = null;
 
         foreach (Player player in Player.ReadyList)
             ShowCurrent(player);
@@ -55,7 +55,7 @@ public sealed class EventRollPresenter
             HeaderText,
             _config.HeaderVerticalPosition);
 
-        if (_displayedEvent == null)
+        if (_displayedOption == null)
         {
             manager.Remove(player, HintElementId.LobbyEventName);
             return;
@@ -65,52 +65,50 @@ public sealed class EventRollPresenter
             player,
             HintElementId.LobbyEventName,
             HintUiFormatter.FormatEventName(
-                _displayedEvent.DisplayName,
-                _displayedEvent.DisplayColor,
+                _displayedOption.DisplayName,
+                _displayedOption.DisplayColor,
                 bold: true),
             _config.EventNameVerticalPosition);
     }
 
     public void Start(
-        EventBase selectedEvent,
-        IReadOnlyList<EventBase> enabledEvents,
+        EventSelectionOption selectedOption,
+        IReadOnlyList<EventSelectionOption> availableOptions,
         Func<float> getRemainingCountdownSeconds,
-        Action<EventBase>? onCompleted)
+        Action<EventSelectionOption>? onCompleted)
     {
-        if (selectedEvent == null)
-            throw new ArgumentNullException(nameof(selectedEvent));
+        if (selectedOption == null)
+            throw new ArgumentNullException(nameof(selectedOption));
 
-        if (enabledEvents == null)
-            throw new ArgumentNullException(nameof(enabledEvents));
+        if (availableOptions == null)
+            throw new ArgumentNullException(nameof(availableOptions));
 
         if (getRemainingCountdownSeconds == null)
             throw new ArgumentNullException(nameof(getRemainingCountdownSeconds));
 
         CancelRoll();
 
-        List<EventBase> eventOptions = enabledEvents
-            .Where(x => x != null && x.IsEnabled && !string.IsNullOrWhiteSpace(x.Name))
-            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+        List<EventSelectionOption> options = availableOptions
+            .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Identity))
+            .GroupBy(x => x.Identity, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
 
-        if (eventOptions.Count == 0)
+        if (options.Count == 0)
         {
             _isRunning = false;
-            ShowEvent(selectedEvent);
-            onCompleted?.Invoke(selectedEvent);
+            ShowOption(selectedOption);
+            onCompleted?.Invoke(selectedOption);
             return;
         }
 
-        if (!eventOptions.Any(x => string.Equals(x.Name, selectedEvent.Name, StringComparison.OrdinalIgnoreCase)))
-        {
-            eventOptions.Add(selectedEvent);
-        }
+        if (!options.Any(x => OptionIdentityComparer.Instance.Equals(x, selectedOption)))
+            options.Add(selectedOption);
 
         _isCancelled = false;
         _isRunning = true;
         _rollHandle = Timing.RunCoroutine(
-            RunRoll(selectedEvent, eventOptions, getRemainingCountdownSeconds, onCompleted));
+            RunRoll(selectedOption, options, getRemainingCountdownSeconds, onCompleted));
     }
 
     public void Cancel()
@@ -131,10 +129,10 @@ public sealed class EventRollPresenter
     }
 
     private IEnumerator<float> RunRoll(
-        EventBase selectedEvent,
-        List<EventBase> eventOptions,
+        EventSelectionOption selectedOption,
+        List<EventSelectionOption> options,
         Func<float> getRemainingCountdownSeconds,
-        Action<EventBase>? onCompleted)
+        Action<EventSelectionOption>? onCompleted)
     {
         try
         {
@@ -145,14 +143,15 @@ public sealed class EventRollPresenter
             float availableAnimationSeconds =
                 RouletteTiming.GetAvailableAnimationSeconds(remainingCountdownSeconds);
 
-            RouletteAnimationPlan<EventBase> plan = RouletteAnimationPlan<EventBase>.Create(
-                selectedEvent,
-                eventOptions,
-                _config.TotalDurationSeconds,
-                availableAnimationSeconds,
-                EventIdentityComparer.Instance);
+            RouletteAnimationPlan<EventSelectionOption> plan =
+                RouletteAnimationPlan<EventSelectionOption>.Create(
+                    selectedOption,
+                    options,
+                    _config.TotalDurationSeconds,
+                    availableAnimationSeconds,
+                    OptionIdentityComparer.Instance);
 
-            foreach (RouletteFrame<EventBase> frame in plan.Frames)
+            foreach (RouletteFrame<EventSelectionOption> frame in plan.Frames)
             {
                 if (_isCancelled ||
                     !RouletteTiming.CanWaitBeforeCutoff(
@@ -162,14 +161,14 @@ public sealed class EventRollPresenter
                     break;
                 }
 
-                ShowEvent(frame.Value);
+                ShowOption(frame.Value);
                 yield return Timing.WaitForSeconds(frame.Delay.Seconds);
             }
 
             if (_isCancelled)
                 yield break;
 
-            ShowEvent(plan.SelectedWinner);
+            ShowOption(plan.SelectedWinner);
             onCompleted?.Invoke(plan.SelectedWinner);
         }
         finally
@@ -180,10 +179,10 @@ public sealed class EventRollPresenter
         }
     }
 
-    private void ShowEvent(EventBase eventInstance)
+    private void ShowOption(EventSelectionOption option)
     {
         _isVisible = true;
-        _displayedEvent = eventInstance;
+        _displayedOption = option;
 
         foreach (Player player in Player.ReadyList)
             ShowCurrent(player);
@@ -192,7 +191,7 @@ public sealed class EventRollPresenter
     private void ClearDisplay()
     {
         _isVisible = false;
-        _displayedEvent = null;
+        _displayedOption = null;
 
         HintManager? manager = global::MyFirstPlugin.MyFirstPlugin.Hints;
         if (manager == null)
@@ -205,11 +204,11 @@ public sealed class EventRollPresenter
         }
     }
 
-    private sealed class EventIdentityComparer : IEqualityComparer<EventBase>
+    private sealed class OptionIdentityComparer : IEqualityComparer<EventSelectionOption>
     {
-        public static readonly EventIdentityComparer Instance = new();
+        public static readonly OptionIdentityComparer Instance = new();
 
-        public bool Equals(EventBase? first, EventBase? second)
+        public bool Equals(EventSelectionOption? first, EventSelectionOption? second)
         {
             if (ReferenceEquals(first, second))
                 return true;
@@ -217,10 +216,10 @@ public sealed class EventRollPresenter
             if (first == null || second == null)
                 return false;
 
-            return string.Equals(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(first.Identity, second.Identity, StringComparison.OrdinalIgnoreCase);
         }
 
-        public int GetHashCode(EventBase eventInstance) =>
-            StringComparer.OrdinalIgnoreCase.GetHashCode(eventInstance.Name);
+        public int GetHashCode(EventSelectionOption option) =>
+            StringComparer.OrdinalIgnoreCase.GetHashCode(option.Identity);
     }
 }

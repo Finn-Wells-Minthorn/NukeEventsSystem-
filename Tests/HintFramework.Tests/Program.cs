@@ -44,6 +44,13 @@ internal static class Program
         Run("single-event roulette is safe", SingleEventRouletteIsSafe);
         Run("roulette final-five cutoff", RouletteFinalFiveCutoff);
         Run("watermark animation lifecycle protection", WatermarkAnimationLifecycleProtection);
+        Run("normal round 100 percent selection", NormalRoundAlwaysSelectedAtHundredPercent);
+        Run("normal round zero percent selects real event", ZeroPercentSelectsRealEvent);
+        Run("normal round fallback without real events", NormalRoundFallbackWithoutRealEvents);
+        Run("no available selection preserves failure", NoAvailableSelectionPreservesFailure);
+        Run("roulette accepts normal round winner", RouletteAcceptsNormalRoundWinner);
+        Run("normal round appears once in roulette options", NormalRoundAppearsOnceInRouletteOptions);
+        Run("normal round activation starts no event", NormalRoundActivationStartsNoEvent);
 
         Console.WriteLine($"Hint framework tests passed: {_passed}/{_run}");
         return 0;
@@ -663,6 +670,145 @@ internal static class Program
         Assert(!state.IsCurrent(firstGeneration), "Stopping must invalidate stale callbacks.");
         Assert(state.TryStart(out int secondGeneration), "The gradient should start cleanly next lifecycle.");
         Assert(secondGeneration != firstGeneration, "A restarted gradient requires a fresh generation.");
+    }
+
+
+    private static void NormalRoundAlwaysSelectedAtHundredPercent()
+    {
+        EventManager.Reset();
+        TestEvent realEvent = new("real event");
+        EventManager.Register(realEvent);
+
+        NormalRoundConfig config = new() { Enabled = true, ChancePercent = 100f };
+        EventSelector selector = new(
+            new RandomEventSelectionStrategy(new Random(1)),
+            config,
+            () => 0.999d);
+
+        EventSelectionOption? selected = selector.Select();
+        Assert(selected != null && selected.IsNormalRound,
+            "A 100% Normal Round chance must always select Normal Round.");
+        EventManager.Reset();
+    }
+
+    private static void ZeroPercentSelectsRealEvent()
+    {
+        EventManager.Reset();
+        TestEvent realEvent = new("real event");
+        EventManager.Register(realEvent);
+
+        NormalRoundConfig config = new() { Enabled = true, ChancePercent = 0f };
+        EventSelector selector = new(
+            new RandomEventSelectionStrategy(new Random(1)),
+            config,
+            () => 0d);
+
+        EventSelectionOption? selected = selector.Select();
+        Assert(selected != null && !selected.IsNormalRound && ReferenceEquals(selected.Event, realEvent),
+            "A 0% Normal Round chance must select an enabled real event.");
+        EventManager.Reset();
+    }
+
+    private static void NormalRoundFallbackWithoutRealEvents()
+    {
+        EventManager.Reset();
+        NormalRoundConfig config = new() { Enabled = true, ChancePercent = 0f };
+        EventSelector selector = new(
+            new RandomEventSelectionStrategy(new Random(1)),
+            config,
+            () => 0.5d);
+
+        EventSelectionOption? selected = selector.Select();
+        Assert(selected != null && selected.IsNormalRound,
+            "Normal Round should be the fallback when it is enabled and no real events are available.");
+        EventManager.Reset();
+    }
+
+    private static void NoAvailableSelectionPreservesFailure()
+    {
+        EventManager.Reset();
+        NormalRoundConfig config = new() { Enabled = false, ChancePercent = 100f };
+        EventSelector selector = new(
+            new RandomEventSelectionStrategy(new Random(1)),
+            config,
+            () => 0d);
+
+        Assert(selector.Select() == null,
+            "With Normal Round disabled and no real events, selection should retain the existing null failure result.");
+        EventManager.Reset();
+    }
+
+    private static void RouletteAcceptsNormalRoundWinner()
+    {
+        EventManager.Reset();
+        TestEvent realEvent = new("real event");
+        EventManager.Register(realEvent);
+        NormalRoundConfig config = new();
+        EventSelector selector = new(
+            new RandomEventSelectionStrategy(new Random(1)),
+            config,
+            () => 0d);
+
+        EventSelectionOption normalRound = EventSelectionOption.NormalRound(config);
+        RouletteAnimationPlan<EventSelectionOption> plan =
+            RouletteAnimationPlan<EventSelectionOption>.Create(
+                normalRound,
+                selector.GetRouletteOptions(),
+                RouletteTiming.DefaultDurationSeconds,
+                10f);
+
+        Assert(ReferenceEquals(plan.SelectedWinner, normalRound),
+            "Roulette planning must retain Normal Round as the predetermined winner.");
+        EventManager.Reset();
+    }
+
+    private static void NormalRoundAppearsOnceInRouletteOptions()
+    {
+        EventManager.Reset();
+        EventManager.Register(new TestEvent("real event"));
+        NormalRoundConfig config = new() { Enabled = true };
+        EventSelector selector = new(
+            new RandomEventSelectionStrategy(new Random(1)),
+            config,
+            () => 0d);
+
+        int normalRoundCount = 0;
+        foreach (EventSelectionOption option in selector.GetRouletteOptions())
+        {
+            if (option.IsNormalRound)
+                ++normalRoundCount;
+        }
+
+        Assert(normalRoundCount == 1,
+            "The visible roulette option list must contain Normal Round exactly once.");
+        EventManager.Reset();
+    }
+
+    private static void NormalRoundActivationStartsNoEvent()
+    {
+        EventManager.Reset();
+        int startingNotifications = 0;
+        EventManager.EventStarting += _ => ++startingNotifications;
+
+        EventSelectionOption normalRound = EventSelectionOption.NormalRound(new NormalRoundConfig());
+        EventBase? launched = EventSelectionActivator.Start(normalRound);
+
+        Assert(launched == null, "Normal Round must not launch an EventBase.");
+        Assert(EventManager.CurrentEvent == null, "Normal Round must leave CurrentEvent null.");
+        Assert(startingNotifications == 0, "Normal Round must not emit event-start lifecycle notifications.");
+        EventManager.Reset();
+    }
+
+    private sealed class TestEvent : EventBase
+    {
+        private readonly string _name;
+
+        public TestEvent(string name)
+        {
+            _name = name;
+        }
+
+        public override string Name => _name;
     }
 
     private static int CountOccurrences(string value, string token)
